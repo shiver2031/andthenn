@@ -1,0 +1,36 @@
+{
+  "name": "andthenn-media-erp",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev --parallel",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "e2e": "playwright test",
+    "e2e:report": "playwright show-report test-results/playwright-report",
+    "db:generate": "pnpm --filter @andthenn/db db:generate",
+    "db:migrate": "pnpm --filter @andthenn/db db:migrate",
+    "db:seed": "pnpm --filter @andthenn/db db:seed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "eslint": "^9.39.2",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.5",
+    "turbo": "^2.10.8",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,45 @@
+openapi: 3.1.0
+info:
+  title: AndThenn Media ERP API
+  version: 1.0.0
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      operationId: health
+      responses: { "200": { description: Service is responsive } }
+  /webhooks/gmail:
+    post:
+      operationId: gmailPush
+      security: [{ googleOidc: [] }]
+      responses: { "202": { description: Receipt and reconciliation event accepted } }
+  /webhooks/whatsapp:
+    post:
+      operationId: whatsappWebhook
+      security: [{ metaHmac: [] }]
+      responses: { "202": { description: Ordered source events accepted } }
+  /uploads:
+    post:
+      operationId: initiateUpload
+      security: [{ supabaseSession: [] }]
+      responses: { "201": { description: Authorized resumable upload session } }
+  /uploads/complete:
+    post:
+      operationId: finalizeUpload
+      security: [{ supabaseSession: [] }]
+      responses: { "201": { description: Immutable file version created after verification } }
+  /review/{token}:
+    get:
+      operationId: readPinnedReview
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses: { "200": { description: Pinned review version }, "404": { description: Expired, revoked or unknown } }
+    post:
+      operationId: createReviewComment
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses: { "201": { description: Version-scoped comment created } }
+components:
+  securitySchemes:
+    supabaseSession: { type: http, scheme: bearer, bearerFormat: JWT }
+    googleOidc: { type: http, scheme: bearer, bearerFormat: JWT }
+    metaHmac: { type: apiKey, in: header, name: X-Hub-Signature-256 }
