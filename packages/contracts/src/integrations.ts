@@ -25,6 +25,7 @@ export const uploadCompleteSchema = z.object({
   checksumSha256: z.string().regex(/^[a-f0-9]{64}$/i),
   sizeBytes: z.number().int().positive(),
   idempotencyKey: z.string().min(16),
+  parts: z.array(z.object({ partNumber: z.number().int().positive(), etag: z.string().min(1).max(256) })).max(2_000).optional(),
 });
 
 export const uploadInitiateSchema = z.object({

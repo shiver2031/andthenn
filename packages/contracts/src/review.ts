@@ -29,6 +29,7 @@ const annotationSchema = z.discriminatedUnion("kind", [
 
 export const reviewCommentSchema = z.object({
   reviewerSessionId: idSchema,
+  reviewerSessionToken: z.string().min(32).max(512),
   body: nonEmptyTextSchema.max(5_000),
   parentCommentId: idSchema.nullable().default(null),
   annotation: annotationSchema,

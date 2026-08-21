@@ -12,14 +12,20 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check:fast": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm check:fast && pnpm e2e",
     "e2e": "playwright test",
     "e2e:report": "playwright show-report test-results/playwright-report",
+    "prototype": "tsx packages/db/src/prototype.ts start",
+    "prototype:reset": "tsx packages/db/src/prototype.ts reset",
+    "acceptance:prototype": "tsx packages/db/src/prototype.ts acceptance",
+    "acceptance:repeat": "tsx packages/db/src/prototype.ts repeat",
     "db:generate": "pnpm --filter @andthenn/db db:generate",
     "db:migrate": "pnpm --filter @andthenn/db db:migrate",
     "db:seed": "pnpm --filter @andthenn/db db:seed"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
     "@playwright/test": "1.61.1",
     "@eslint/js": "^9.39.2",
     "@types/node": "^26.1.2",
@@ -32,5 +38,17 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.66.0",
     "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@embedded-postgres/darwin-arm64",
+      "@embedded-postgres/darwin-x64",
+      "@embedded-postgres/linux-arm",
+      "@embedded-postgres/linux-arm64",
+      "@embedded-postgres/linux-ia32",
+      "@embedded-postgres/linux-ppc64",
+      "@embedded-postgres/linux-x64",
+      "@embedded-postgres/windows-x64"
+    ]
   }
 }

@@ -9,9 +9,17 @@ export interface UploadRequest {
 }
 
 export interface StorageProvider {
-  initiateUpload(input: UploadRequest): Promise<{ uploadId: string; uploadUrl: string; expiresAt: Date }>;
-  finalizeUpload(input: UploadRequest & { uploadId: string }): Promise<{ objectKey: string; etag: string }>;
+  initiateUpload(input: UploadRequest): Promise<{
+    uploadId: string;
+    mode: "SINGLE" | "MULTIPART";
+    uploadUrl?: string;
+    parts?: readonly { partNumber: number; uploadUrl: string }[];
+    expiresAt: Date;
+  }>;
+  finalizeUpload(input: UploadRequest & { uploadId: string; parts?: readonly { partNumber: number; etag: string }[] }): Promise<{ objectKey: string; etag: string }>;
   createSignedRead(objectKey: string, expiresInSeconds: number): Promise<string>;
+  openRead(objectKey: string, range?: string): Promise<{ body: ReadableStream<Uint8Array>; contentLength: number; contentRange: string | null; contentType: string; etag: string | null }>;
+  storeEvidence(input: { organizationId: string; intakeItemId: string; sourceItemId: string; filename: string; contentType: string; bytes: Uint8Array }): Promise<{ storageKey: string; checksumSha256: string; sizeBytes: number }>;
   copyToArchive(sourceKey: string, destinationKey: string): Promise<{ destinationKey: string }>;
   quarantine(objectKey: string, restoreUntil: Date): Promise<void>;
   restore(objectKey: string): Promise<void>;
@@ -94,6 +102,7 @@ export interface JobEnvelope<T = unknown> {
 export interface JobQueue {
   enqueue<T>(job: Omit<JobEnvelope<T>, "attempts" | "queueMessageId">, delaySeconds?: number): Promise<void>;
   claim<T>(queue: string, visibilitySeconds: number, quantity: number): Promise<readonly JobEnvelope<T>[]>;
+  recordAttempt?(job: JobEnvelope): Promise<void>;
   complete(job: JobEnvelope): Promise<void>;
   retry(job: JobEnvelope, delaySeconds: number, reason: string): Promise<void>;
   fail(job: JobEnvelope, reason: string): Promise<void>;

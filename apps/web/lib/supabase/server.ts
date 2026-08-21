@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { assertRuntimeConfiguration } from "../config";
 
 export async function createSupabaseServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,11 +16,9 @@ export async function createSupabaseServerClient() {
 }
 
 export async function requireUser() {
+  assertRuntimeConfiguration();
   const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    if (process.env.NODE_ENV === "production") throw new Error("Authentication is not configured");
-    return { id: "00000000-0000-4000-8000-000000000001", email: "demo@andthenn.in" };
-  }
+  if (!supabase) throw new Error("Authentication is not configured");
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new Error("Unauthenticated");
   return user;

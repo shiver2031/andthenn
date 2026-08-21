@@ -22,6 +22,62 @@
       "when": 1785843445066,
       "tag": "0002_wild_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785843445067,
+      "tag": "0003_security_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785843445068,
+      "tag": "0004_phase2_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785843445069,
+      "tag": "0005_phase3_intake_and_phase2_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786590000000,
+      "tag": "0006_phase4_files_and_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786590000001,
+      "tag": "0007_phase5_commercials_and_closure",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786590000002,
+      "tag": "0008_phase6_operational_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786590000003,
+      "tag": "0009_phase7_public_boundary_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786590000004,
+      "tag": "0010_browser_data_api_lockdown",
+      "breakpoints": true
     }
   ]
 }

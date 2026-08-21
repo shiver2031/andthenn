@@ -8,12 +8,16 @@ export class OutboxDispatcher {
   constructor(databaseUrl: string, private readonly idleDelayMs = 1_000) { this.sql = postgres(databaseUrl, { max: 2, prepare: false }); }
   stop() { this.stopping = true; }
 
-  private queueFor(type: string) {
+  private queueFor(type: string): string | null {
+    if (type.startsWith("gmail.") || type.startsWith("intake.")) return "intake";
     if (type.startsWith("media.")) return "media";
     if (type.startsWith("notification.")) return "notifications";
+    if (type.startsWith("review.share_")) return "notifications";
+    if (type.startsWith("rights.")) return "notifications";
     if (type.startsWith("archive.")) return "archive";
     if (type.startsWith("retention.")) return "retention";
-    return "intake";
+    if (type.startsWith("calendar.") || type.startsWith("integration.")) return "integrations";
+    return null;
   }
 
   async dispatchBatch() {
@@ -23,6 +27,13 @@ export class OutboxDispatcher {
         order by created_at for update skip locked limit 50`;
       for (const row of rows) {
         const queue = this.queueFor(row.event_type);
+        if (!queue) {
+          await tx`insert into job_runs (id, organization_id, queue, type, status, payload, idempotency_key, correlation_id, completed_at, last_failure)
+            values (${row.id}::uuid, ${row.organization_id}::uuid, 'failed_jobs', ${row.event_type}, 'FAILED', ${tx.json(JSON.parse(JSON.stringify(row.payload)) as postgres.JSONValue)}::jsonb, ${row.idempotency_key}, ${row.correlation_id}::uuid, now(), 'No queue registered for event type')
+            on conflict (idempotency_key) do nothing`;
+          await tx`update outbox_events set dispatched_at = now() where id = ${row.id}::uuid`;
+          continue;
+        }
         const envelope = { id: row.id, queue, type: row.event_type, idempotencyKey: row.idempotency_key, correlationId: row.correlation_id, attempts: 0, payload: row.payload };
         await tx`insert into job_runs (id, organization_id, queue, type, status, payload, idempotency_key, correlation_id)
           values (${row.id}::uuid, ${row.organization_id}::uuid, ${queue}, ${row.event_type}, 'QUEUED', ${tx.json(JSON.parse(JSON.stringify(row.payload)) as postgres.JSONValue)}::jsonb, ${row.idempotency_key}, ${row.correlation_id}::uuid)

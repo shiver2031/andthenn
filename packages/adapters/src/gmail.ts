@@ -22,7 +22,7 @@ export class GmailIntakeAdapter implements InboundEmailProvider {
 
   constructor(private readonly config: GmailConfig) {
     this.auth = new GoogleAuth({
-      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      scopes: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"],
       ...(config.credentials ? { credentials: config.credentials } : {}),
     });
   }
@@ -86,5 +86,19 @@ export class GmailIntakeAdapter implements InboundEmailProvider {
   async fetchRaw(providerMessageId: string) {
     const value = await this.request<{ raw: string }>(`messages/${providerMessageId}?format=raw`);
     return new Uint8Array(Buffer.from(value.raw, "base64url"));
+  }
+
+  async sendReview(input: { recipient: string; subject: string; message: string; reviewUrl: string }) {
+    const encodedSubject = Buffer.from(input.subject).toString("base64");
+    const raw = [
+      `To: ${input.recipient}`,
+      `Subject: =?UTF-8?B?${encodedSubject}?=`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      "",
+      `${input.message}\n\n${input.reviewUrl}`,
+    ].join("\r\n");
+    const result = await this.request<{ id: string }>("messages/send", { method: "POST", body: JSON.stringify({ raw: Buffer.from(raw).toString("base64url") }) });
+    return { providerMessageId: result.id };
   }
 }

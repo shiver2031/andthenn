@@ -25,8 +25,8 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "pnpm --filter @andthenn/web build && pnpm --filter @andthenn/web start",
-    url: "http://localhost:3000/api/health",
+    command: "pnpm --filter @andthenn/web build && NODE_ENV=production HOSTNAME=127.0.0.1 PORT=3000 node --env-file-if-exists=.env.local apps/web/.next/standalone/apps/web/server.js",
+    url: "http://localhost:3000/api/health/ready",
     reuseExistingServer: true,
     timeout: 120_000,
   },

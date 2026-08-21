@@ -46,7 +46,7 @@ export function can(
     case "reviews:comment":
       return taskVisible || projectVisible;
     case "reviews:share":
-      return taskVisible && (scope.explicitlyGranted === true || membership.reviewShareTaskIds.has(scope.taskId ?? ""));
+      return taskVisible || membership.reviewShareTaskIds.has(scope.taskId ?? "");
     case "reviews:approve":
       return scope.isPrimaryOwner === true || membership.primaryTaskIds.has(scope.taskId ?? "");
     case "reports:global":

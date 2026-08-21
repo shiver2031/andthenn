@@ -10,9 +10,10 @@ export class DurableWorker {
   stop() { this.stopping = true; }
 
   private async process(job: JobEnvelope) {
-    const handler = this.handlers[job.type];
-    if (!handler) { await this.queue.fail(job, `No handler registered for ${job.type}`); return; }
     try {
+      await this.queue.recordAttempt?.(job);
+      const handler = this.handlers[job.type];
+      if (!handler) throw new Error(`No handler registered for ${job.type}`);
       await handler(job);
       await this.queue.complete(job);
     } catch (error) {

@@ -1,0 +1,26 @@
+{
+  "$schema": "andthenn/prototype-acceptance/v2",
+  "scope": "self-contained prototype; production-provider integrations are excluded",
+  "journeys": [
+    { "id": "ACC-01", "name": "Persona entry and role boundary", "route": "/login", "automated": "apps/web/e2e/prototype/core.spec.ts", "manual": "UAT-01" },
+    { "id": "ACC-02", "name": "Shell controls and deep links", "route": "/home", "automated": "apps/web/e2e/prototype/routes-and-api.spec.ts", "manual": "UAT-02" },
+    { "id": "ACC-03", "name": "Intake to activation", "route": "/intake", "automated": "apps/web/e2e/prototype/core.spec.ts", "manual": "UAT-03" },
+    { "id": "ACC-04", "name": "Project, task, stage and time", "route": "/projects", "automated": "apps/web/e2e/prototype/routes-and-api.spec.ts", "manual": "UAT-04" },
+    { "id": "ACC-05", "name": "Upload, delivery and review", "route": "/tasks/[id]", "automated": "apps/web/e2e/prototype/routes-and-api.spec.ts", "manual": "UAT-05" },
+    { "id": "ACC-06", "name": "Commercial acceptance", "route": "/commercial", "automated": "apps/web/e2e/prototype/routes-and-api.spec.ts", "manual": "UAT-06" },
+    { "id": "ACC-07", "name": "Operational surfaces", "route": "/reports", "automated": "apps/web/e2e/prototype/routes-and-api.spec.ts", "manual": "UAT-07" },
+    { "id": "ACC-08", "name": "Recovery and unavailable states", "route": "/review/[token]", "automated": "apps/web/e2e/prototype/routes-and-api.spec.ts", "manual": "UAT-08" }
+  ],
+  "controls": [
+    { "id": "CTRL-01", "route": "/login", "control": "Manager persona", "outcome": "creates local session and enters Home", "automated": "ACC-01", "manual": "UAT-01" },
+    { "id": "CTRL-02", "route": "/home", "control": "Search, New, Help, Profile, notifications", "outcome": "each control opens a labelled destination or dialog", "automated": "ACC-02", "manual": "UAT-02" },
+    { "id": "CTRL-03", "route": "/intake", "control": "Manual and offline capture", "outcome": "valid input persists or queues locally", "automated": "ACC-03", "manual": "UAT-03" },
+    { "id": "CTRL-04", "route": "/projects", "control": "Project cards and project creation", "outcome": "direct links load and manager create path is available", "automated": "ACC-04", "manual": "UAT-04" },
+    { "id": "CTRL-05", "route": "/tasks/[id]", "control": "Upload and review controls", "outcome": "invalid upload is rejected; public review works separately", "automated": "ACC-05", "manual": "UAT-05" },
+    { "id": "CTRL-06", "route": "/commercial", "control": "Quotes, invoices and public acceptance", "outcome": "manager-only commercial route and public unavailable state are defined", "automated": "ACC-06", "manual": "UAT-06" },
+    { "id": "CTRL-07", "route": "/reports", "control": "CSV export", "outcome": "export is authenticated and reconciles to persisted data", "automated": "ACC-07", "manual": "UAT-07" },
+    { "id": "CTRL-08", "route": "all ERP routes", "control": "Responsive navigation", "outcome": "route loads without browser error at 375, 768, 1024 and 1440", "automated": "ACC-02", "manual": "UAT-08" }
+  ],
+  "prototypeExcluded": ["Google OAuth", "Supabase hosting", "cloud object storage", "Gmail delivery", "WhatsApp delivery", "Google Calendar OAuth", "AI quality"],
+  "scoring": { "uiInteractionWeight": 0.5, "automatedWeight": 0.4, "manualWeight": 0.1, "manualEvidenceRequired": true }
+}

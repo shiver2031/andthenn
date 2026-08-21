@@ -1,3 +1,25 @@
-import { Badge, Button } from "@andthenn/ui"; import { Building2, Plus, Search } from "lucide-react"; import { PageHeading } from "../../../components/page-heading";
-const clients=[{name:"Aster House",projects:3,contact:"Rhea Kapoor",value:"₹18.4L",tone:"green"},{name:"Juniper Labs",projects:2,contact:"Karan Singh",value:"₹12.8L",tone:"green"},{name:"One8",projects:4,contact:"Meera Rao",value:"₹22.1L",tone:"green"},{name:"Northstar Hotels",projects:0,contact:"Tara Jain",value:"Proposal",tone:"violet"}];
-export default function ClientsPage(){return <><PageHeading eyebrow="18 clients" title="Clients & brands" description="Contacts, brand relationships, effective rate cards, and a complete project history." action={<Button><Plus size={16}/> Add client</Button>}/><div className="surface mb-4 flex h-12 items-center gap-2 rounded-xl px-4"><Search size={16} className="text-zinc-400"/><input aria-label="Search clients" placeholder="Search clients, brands or contacts…" className="flex-1 bg-transparent text-sm outline-none"/></div><div className="surface overflow-hidden rounded-2xl"><div className="grid grid-cols-[1.5fr_1fr_.7fr_.7fr] border-b border-zinc-100 bg-zinc-50 px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400"><span>Client</span><span>Primary contact</span><span>Projects</span><span>Commercial</span></div>{clients.map(client=><button key={client.name} className="grid w-full grid-cols-[1.5fr_1fr_.7fr_.7fr] items-center border-b border-zinc-100 px-5 py-4 text-left text-xs hover:bg-zinc-50"><span className="flex items-center gap-3 font-bold"><span className="grid size-9 place-items-center rounded-xl bg-zinc-950 text-white"><Building2 size={15}/></span>{client.name}<Badge tone={client.tone as "green"|"violet"} className="hidden sm:inline-flex">Active</Badge></span><span className="text-zinc-500">{client.contact}</span><span className="font-bold">{client.projects}</span><span className="font-bold">{client.value}</span></button>)}</div></>}
+import { Badge, Button } from "@andthenn/ui";
+import { Building2, Plus } from "lucide-react";
+import { clients, createDatabase, eq } from "@andthenn/db";
+import { PageHeading } from "../../../components/page-heading";
+import { archiveClient, createClient } from "../actions";
+import { resolveActorContext } from "../../../lib/actor-context";
+
+export default async function ClientsPage() {
+  const actor = await resolveActorContext(); if (!actor) return null;
+  const { db } = createDatabase();
+  const rows = await db.select().from(clients).where(eq(clients.organizationId, actor.organizationId));
+  const active = rows.filter((client) => client.lifecycle === "ACTIVE");
+  return <>
+    <PageHeading eyebrow={`${active.length} active clients`} title="Clients & brands" description="Organization-scoped client records with an immutable activity trail." />
+    {actor.role === "MANAGER" && <form action={createClient} className="surface mb-5 grid gap-2 rounded-2xl p-4 md:grid-cols-[1fr_2fr_auto]">
+      <label className="sr-only" htmlFor="client-name">Client name</label><input id="client-name" name="name" required maxLength={240} placeholder="Client name" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm" />
+      <input name="notes" maxLength={10000} placeholder="Notes (optional)" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm" />
+      <Button type="submit"><Plus size={16} /> Add client</Button>
+    </form>}
+    <div className="surface overflow-hidden rounded-2xl"><div className="grid grid-cols-[1fr_110px_120px] border-b border-zinc-100 bg-zinc-50 px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-400"><span>Client</span><span>Status</span><span>Actions</span></div>
+      {rows.map((client) => <div key={client.id} className="grid grid-cols-[1fr_110px_120px] items-center border-b border-zinc-100 px-5 py-4 text-xs"><span className="flex items-center gap-3 font-bold"><span className="grid size-9 place-items-center rounded-xl bg-zinc-950 text-white"><Building2 size={15}/></span>{client.name}</span><Badge tone={client.lifecycle === "ACTIVE" ? "green" : "neutral"}>{client.lifecycle}</Badge><span>{actor.role === "MANAGER" && client.lifecycle === "ACTIVE" && <form action={archiveClient}><input type="hidden" name="clientId" value={client.id}/><button className="text-xs font-semibold text-zinc-500 hover:text-red-600">Archive</button></form>}</span></div>)}
+      {rows.length === 0 && <p className="p-8 text-center text-sm text-zinc-400">No clients yet. Add the first client to begin a project.</p>}
+    </div>
+  </>;
+}

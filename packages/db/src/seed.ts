@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createDatabase } from "./client";
+import { closeDatabase, createDatabase } from "./client";
 import {
   brands,
   capacitySchedules,
@@ -29,17 +29,21 @@ import {
   workflowStages,
 } from "./schema";
 
-const { db, client } = createDatabase();
+const { db } = createDatabase();
 
-const orgId = randomUUID();
-const managerProfileId = randomUUID();
-const producerProfileId = randomUUID();
-const editorProfileId = randomUUID();
-const tempProfileId = randomUUID();
-const managerMembershipId = randomUUID();
-const producerMembershipId = randomUUID();
-const editorMembershipId = randomUUID();
-const tempMembershipId = randomUUID();
+// Fixed identifiers make documented URLs, browser tests, and persona sessions
+// deterministic. Scenario data created by the UI still uses database UUIDs.
+const orgId = "20000000-0000-4000-8000-000000000001";
+const managerProfileId = "21000000-0000-4000-8000-000000000001";
+const producerProfileId = "21000000-0000-4000-8000-000000000002";
+const editorProfileId = "21000000-0000-4000-8000-000000000003";
+const tempProfileId = "21000000-0000-4000-8000-000000000004";
+const expiredProfileId = "21000000-0000-4000-8000-000000000005";
+const managerMembershipId = "22000000-0000-4000-8000-000000000001";
+const producerMembershipId = "22000000-0000-4000-8000-000000000002";
+const editorMembershipId = "22000000-0000-4000-8000-000000000003";
+const tempMembershipId = "22000000-0000-4000-8000-000000000004";
+const expiredMembershipId = "22000000-0000-4000-8000-000000000005";
 const clientId = randomUUID();
 const brandId = randomUUID();
 const contactId = randomUUID();
@@ -69,10 +73,11 @@ await db.transaction(async (tx) => {
   ]).onConflictDoNothing();
 
   await tx.insert(profiles).values([
-    { id: managerProfileId, authUserId: randomUUID(), displayName: "Mira Shah", email: "mira@andthenn.example" },
-    { id: producerProfileId, authUserId: randomUUID(), displayName: "Arjun Menon", email: "arjun@andthenn.example" },
-    { id: editorProfileId, authUserId: randomUUID(), displayName: "Naina Kapoor", email: "naina@andthenn.example" },
-    { id: tempProfileId, authUserId: randomUUID(), displayName: "Kabir Rao", email: "kabir.freelance@example.com" },
+    { id: managerProfileId, authUserId: "10000000-0000-4000-8000-000000000001", displayName: "Mira Shah", email: "mira@andthenn.example" },
+    { id: producerProfileId, authUserId: "10000000-0000-4000-8000-000000000002", displayName: "Arjun Menon", email: "arjun@andthenn.example" },
+    { id: editorProfileId, authUserId: "10000000-0000-4000-8000-000000000003", displayName: "Naina Kapoor", email: "naina@andthenn.example" },
+    { id: tempProfileId, authUserId: "10000000-0000-4000-8000-000000000004", displayName: "Kabir Rao", email: "kabir.freelance@example.com" },
+    { id: expiredProfileId, authUserId: "10000000-0000-4000-8000-000000000005", displayName: "Nikhil Das", email: "nikhil.expired@example.com" },
   ]).onConflictDoNothing();
 
   await tx.insert(memberships).values([
@@ -80,6 +85,7 @@ await db.transaction(async (tx) => {
     { id: producerMembershipId, organizationId: orgId, profileId: producerProfileId, role: "EMPLOYEE", accountType: "PERMANENT", status: "ACTIVE", financeAccess: false },
     { id: editorMembershipId, organizationId: orgId, profileId: editorProfileId, role: "EMPLOYEE", accountType: "PERMANENT", status: "ACTIVE", financeAccess: false },
     { id: tempMembershipId, organizationId: orgId, profileId: tempProfileId, role: "TEMP_FREELANCER", accountType: "TEMPORARY", status: "ACTIVE", expiresAt: new Date("2026-12-31T18:29:59.000Z") },
+    { id: expiredMembershipId, organizationId: orgId, profileId: expiredProfileId, role: "TEMP_FREELANCER", accountType: "TEMPORARY", status: "EXPIRED", expiresAt: new Date("2026-01-01T00:00:00.000Z") },
   ]).onConflictDoNothing();
 
   await tx.insert(capacitySchedules).values([
@@ -139,7 +145,7 @@ await db.transaction(async (tx) => {
   await tx.insert(fileAssets).values({ id: fileAssetId, organizationId: orgId, taskId, logicalName: "Aster launch master" });
   await tx.insert(fileVersions).values({ id: fileVersionId, organizationId: orgId, fileAssetId, versionNumber: 2, filename: "aster-afterhours-v2.mp4", contentType: "video/mp4", sizeBytes: 482_000_000, checksumSha256: createHash("sha256").update("demo-file-v2").digest("hex"), storageProvider: "SUPABASE_S3", storageKey: `org/${orgId}/task/${taskId}/asset/${fileAssetId}/version/${fileVersionId}/aster-afterhours-v2.mp4`, uploaderMembershipId: editorMembershipId, processingStatus: "READY", mediaMetadata: { durationMs: 31_400, width: 1920, height: 1080 } });
   await tx.insert(reviewHubs).values({ id: reviewHubId, organizationId: orgId, taskId });
-  await tx.insert(reviewShares).values({ organizationId: orgId, reviewHubId, fileVersionId, tokenHash: createHash("sha256").update("demo-review-token").digest("hex"), status: "DRAFT", expiresAt: new Date("2026-09-03T18:29:59.000Z"), createdByMembershipId: producerMembershipId });
+  await tx.insert(reviewShares).values({ organizationId: orgId, reviewHubId, fileVersionId, tokenHash: createHash("sha256").update("prototype-pepper:demo-review-token").digest("hex"), status: "ACTIVE", expiresAt: new Date("2026-12-03T18:29:59.000Z"), createdByMembershipId: producerMembershipId });
 
   for (const membershipId of [managerMembershipId, producerMembershipId, editorMembershipId]) {
     for (const eventType of ["TASK_ASSIGNED", "MENTION", "DUE_RISK", "OVERDUE", "EXTERNAL_FEEDBACK", "JOB_FAILED"]) {
@@ -149,4 +155,4 @@ await db.transaction(async (tx) => {
 });
 
 console.warn(`Seeded AndThenn demo workspace ${orgId}`);
-await client.end();
+await closeDatabase();

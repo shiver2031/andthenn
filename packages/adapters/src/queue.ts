@@ -24,6 +24,17 @@ export class PgmqJobQueue implements JobQueue {
     return job.queueMessageId;
   }
 
+  async recordAttempt(job: JobEnvelope) {
+    await this.sql.begin(async (tx) => {
+      await tx`insert into job_attempts (job_run_id, attempt_number)
+        values (${job.id}::uuid, ${job.attempts + 1})
+        on conflict (job_run_id, attempt_number) do nothing`;
+      await tx`update job_runs
+        set status = 'RUNNING', started_at = coalesce(started_at, now()), attempts = greatest(attempts, ${job.attempts + 1}), updated_at = now()
+        where id = ${job.id}::uuid`;
+    });
+  }
+
   async complete(job: JobEnvelope) {
     await this.sql.begin(async (tx) => {
       await tx`select pgmq.delete(${job.queue}, ${this.messageId(job)}::bigint)`;

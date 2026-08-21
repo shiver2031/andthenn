@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvedState, assertProjectClosure, assertTaskTransition, assertWorkflowStageDeletion, can, calculateQuoteLine, deadlineAdherence, feedbackState, isReviewShareAccessible, nextDeliverableStatus, splitGst, validateActivation, workloadSummary } from "./index";
+import { approvedState, assertProjectClosure, assertTaskTransition, assertWorkflowStageDeletion, can, calculateQuote, calculateQuoteLine, deadlineAdherence, feedbackState, isReviewShareAccessible, nextDeliverableStatus, splitGst, validateActivation, workloadSummary } from "./index";
 import type { MembershipContext } from "./model";
 
 function membership(overrides: Partial<MembershipContext> = {}): MembershipContext {
@@ -80,6 +80,14 @@ describe("commercial calculations", () => {
     const total = calculateQuoteLine({ description: "Film", quantity: 2, unitRateMinor: 100_000, discountBasisPoints: 1_000, taxBasisPoints: 1_800 });
     expect(total).toEqual({ subtotalMinor: 200_000, discountMinor: 20_000, taxableMinor: 180_000, taxMinor: 32_400, totalMinor: 212_400 });
     expect(splitGst(total.taxMinor, false)).toEqual({ cgstMinor: 16_200, sgstMinor: 16_200, igstMinor: 0 });
+  });
+
+  it("aggregates independently rounded lines and rejects unsafe totals", () => {
+    expect(calculateQuote([
+      { description: "A", quantity: 1, unitRateMinor: 101, discountBasisPoints: 0, taxBasisPoints: 1_800 },
+      { description: "B", quantity: 1, unitRateMinor: 101, discountBasisPoints: 0, taxBasisPoints: 1_800 },
+    ])).toEqual({ subtotalMinor: 202, discountMinor: 0, taxableMinor: 202, taxMinor: 36, totalMinor: 238 });
+    expect(() => calculateQuoteLine({ description: "Huge", quantity: 2, unitRateMinor: Number.MAX_SAFE_INTEGER, discountBasisPoints: 0, taxBasisPoints: 0 })).toThrow(/safe minor-unit/i);
   });
 
   it("keeps missing estimates explicit in workload reporting", () => {

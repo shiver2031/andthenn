@@ -1,15 +1,40 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { prototypeRuntimeEnabled, runtimeConfigurationIsValid } from "./lib/config";
+import { isPublicRoute, loginPathFor } from "./lib/route-policy";
 
 export async function proxy(request: NextRequest) {
-  const response = NextResponse.next({ request });
+  if (isPublicRoute(request.nextUrl.pathname)) return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  // This is presentation context only. Every page and command still performs
+  // its own actor/capability checks and never authorizes from this header.
+  requestHeaders.set("x-andthenn-pathname", request.nextUrl.pathname);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  if (!runtimeConfigurationIsValid()) return new NextResponse("Service unavailable", { status: 503 });
+  if (prototypeRuntimeEnabled()) {
+    if (!request.cookies.get("andthenn_prototype_session")) {
+      if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+      return NextResponse.redirect(new URL(loginPathFor(request.nextUrl.pathname, request.nextUrl.search), request.url));
+    }
+    return response;
+  }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return response;
+  if (!url || !key) return new NextResponse("Service unavailable", { status: 503 });
   const supabase = createServerClient(url, key, { cookies: { getAll: () => request.cookies.getAll(), setAll: (values) => values.forEach(({ name, value, options }) => response.cookies.set(name, value, options)) } });
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) return NextResponse.redirect(new URL("/login", request.url));
+  if (!user) {
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const redirect = NextResponse.redirect(new URL(loginPathFor(request.nextUrl.pathname, request.nextUrl.search), request.url));
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+    return redirect;
+  }
   return response;
 }
 
-export const config = { matcher: ["/((?!api|review|_next/static|_next/image|favicon.ico|manifest.webmanifest).*)"] };
+// Next's HMR endpoint is a WebSocket upgrade, not an application request.
+// Let every `/_next/*` internal route bypass identity/prototype guards; only
+// application pages and APIs should be evaluated by this proxy.
+export const config = { matcher: ["/((?!_next/|favicon.ico|manifest.webmanifest).*)"] };
