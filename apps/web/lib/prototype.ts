@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { prototypeRuntimeEnabled, reviewRuntimeEnabled } from "./config";
 
 export const PROTOTYPE_SESSION_COOKIE = "andthenn_prototype_session";
+export const REVIEW_PERSONA_COOKIE = "andthenn_review_persona";
 
 export const prototypePersonas = {
   manager: { authUserId: "10000000-0000-4000-8000-000000000001", label: "Manager · Mira Shah" },
@@ -41,7 +42,17 @@ export function verifyPrototypeSession(value: string | undefined, now = Date.now
 }
 
 export async function prototypePersonaFromCookies() {
-  return verifyPrototypeSession((await cookies()).get(PROTOTYPE_SESSION_COOKIE)?.value);
+  const requestCookies = await cookies();
+  const signedPersona = verifyPrototypeSession(requestCookies.get(PROTOTYPE_SESSION_COOKIE)?.value);
+  if (signedPersona) return signedPersona;
+  // The hosted review environment intentionally has no identity provider: a
+  // visitor may select any supplied demo persona. This avoids coupling the
+  // review experience to a signing secret across independently deployed
+  // functions while keeping real and local-prototype sessions signed.
+  const reviewPersona = requestCookies.get(REVIEW_PERSONA_COOKIE)?.value;
+  return reviewRuntimeEnabled() && reviewPersona && reviewPersona in prototypePersonas
+    ? reviewPersona as PrototypePersona
+    : null;
 }
 
 export function isPrototypeRequestAllowed(host: string | null) {

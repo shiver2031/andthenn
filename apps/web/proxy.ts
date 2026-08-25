@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { prototypeRuntimeEnabled, reviewRuntimeEnabled, runtimeConfigurationIsValid } from "./lib/config";
+import { PROTOTYPE_SESSION_COOKIE, REVIEW_PERSONA_COOKIE } from "./lib/prototype";
 import { isPublicRoute, loginPathFor } from "./lib/route-policy";
 
 export async function proxy(request: NextRequest) {
@@ -12,7 +13,8 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (!runtimeConfigurationIsValid()) return new NextResponse("Service unavailable", { status: 503 });
   if (prototypeRuntimeEnabled() || reviewRuntimeEnabled()) {
-    if (!request.cookies.get("andthenn_prototype_session")) {
+    const hasSession = request.cookies.has(PROTOTYPE_SESSION_COOKIE) || (reviewRuntimeEnabled() && request.cookies.has(REVIEW_PERSONA_COOKIE));
+    if (!hasSession) {
       if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
       return NextResponse.redirect(new URL(loginPathFor(request.nextUrl.pathname, request.nextUrl.search), request.url));
     }

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isPersonaSessionRequestAllowed, PROTOTYPE_SESSION_COOKIE, prototypePersonas, signPrototypeSession } from "../../../../lib/prototype";
+import { isPersonaSessionRequestAllowed, PROTOTYPE_SESSION_COOKIE, prototypePersonas, REVIEW_PERSONA_COOKIE, signPrototypeSession } from "../../../../lib/prototype";
 import { reviewRuntimeEnabled } from "../../../../lib/config";
 
 export async function POST(request: NextRequest) {
@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     ? NextResponse.redirect(new URL("/home", request.url), { status: 303 })
     : NextResponse.json({ ok: true, redirectTo: "/home" });
   response.cookies.set(PROTOTYPE_SESSION_COOKIE, signPrototypeSession(persona as keyof typeof prototypePersonas), { httpOnly: true, sameSite: "lax", secure: reviewRuntimeEnabled() || request.nextUrl.protocol === "https:", path: "/", maxAge: 60 * 60 * 12 });
+  if (reviewRuntimeEnabled()) response.cookies.set(REVIEW_PERSONA_COOKIE, persona, { httpOnly: true, sameSite: "lax", secure: true, path: "/", maxAge: 60 * 60 * 12 });
   return response;
 }
 
@@ -20,5 +21,6 @@ export function DELETE(request: NextRequest) {
   if (!isPersonaSessionRequestAllowed(request.headers.get("host"))) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const response = NextResponse.json({ ok: true });
   response.cookies.set(PROTOTYPE_SESSION_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
+  response.cookies.set(REVIEW_PERSONA_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
   return response;
 }
