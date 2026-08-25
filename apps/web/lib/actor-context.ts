@@ -1,7 +1,7 @@
 import { and, createDatabase, deliverables, eq, inArray, isNull, memberships, profiles, projectMemberships, taskAssignees, tasks } from "@andthenn/db";
 import type { AccountType, MembershipContext, Role } from "@andthenn/domain";
 import { isMembershipActive } from "@andthenn/domain";
-import { assertRuntimeConfiguration, prototypeRuntimeEnabled } from "./config";
+import { assertRuntimeConfiguration, prototypeRuntimeEnabled, reviewRuntimeEnabled } from "./config";
 import { prototypePersonaFromCookies, prototypePersonas } from "./prototype";
 import { createSupabaseServerClient } from "./supabase/server";
 
@@ -25,7 +25,9 @@ function jwtIssuedAt(token: string | undefined): Date | null {
 /** Resolves the single authoritative application identity for an internal request. */
 export async function resolveActorContext(): Promise<ActorContext | null> {
   assertRuntimeConfiguration();
-  if (prototypeRuntimeEnabled()) {
+  // Hosted review uses the same signed personas as the local prototype, but
+  // resolves them against its deployed seeded database.
+  if (prototypeRuntimeEnabled() || reviewRuntimeEnabled()) {
     const persona = await prototypePersonaFromCookies();
     if (!persona) return null;
     const userId = prototypePersonas[persona].authUserId;
