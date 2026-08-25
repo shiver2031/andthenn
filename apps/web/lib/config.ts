@@ -7,6 +7,11 @@ export function prototypeRuntimeEnabled(env = process.env) {
   return env.APP_RUNTIME === "prototype";
 }
 
+/** Hosted review keeps seeded personas without enabling local-only prototype mode. */
+export function reviewRuntimeEnabled(env = process.env) {
+  return env.APP_RUNTIME === "review";
+}
+
 export function isLoopbackOrigin(origin: string | null) {
   if (!origin) return false;
   try {
@@ -27,6 +32,8 @@ const required = [
   "SUPABASE_STORAGE_BUCKET",
   "REVIEW_TOKEN_PEPPER",
 ] as const;
+
+const reviewRequired = ["APP_URL", "DATABASE_URL", "REVIEW_SIGNING_SECRET"] as const;
 
 function invalid(value: string | undefined) {
   return !value || PLACEHOLDER.test(value) || value.includes("replace-with");
@@ -54,6 +61,11 @@ export function demoModeEnabled(env = process.env) {
 export function configurationProblems(env = process.env): string[] {
   if (prototypeRuntimeEnabled(env)) {
     return isLoopbackOrigin(env.APP_URL ?? null) ? [] : ["APP_URL must be a loopback origin in prototype runtime"];
+  }
+  if (reviewRuntimeEnabled(env)) {
+    const problems = reviewRequired.filter((name) => invalid(env[name]));
+    if (!applicationOrigin(env) && !problems.includes("APP_URL")) problems.push("APP_URL");
+    return problems;
   }
   const problems = required.filter((name) => invalid(env[name]));
   if (!applicationOrigin(env) && !problems.includes("APP_URL")) problems.push("APP_URL");

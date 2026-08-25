@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { prototypeRuntimeEnabled, runtimeConfigurationIsValid } from "./lib/config";
+import { prototypeRuntimeEnabled, reviewRuntimeEnabled, runtimeConfigurationIsValid } from "./lib/config";
 import { isPublicRoute, loginPathFor } from "./lib/route-policy";
 
 export async function proxy(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-andthenn-pathname", request.nextUrl.pathname);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (!runtimeConfigurationIsValid()) return new NextResponse("Service unavailable", { status: 503 });
-  if (prototypeRuntimeEnabled()) {
+  if (prototypeRuntimeEnabled() || reviewRuntimeEnabled()) {
     if (!request.cookies.get("andthenn_prototype_session")) {
       if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
       return NextResponse.redirect(new URL(loginPathFor(request.nextUrl.pathname, request.nextUrl.search), request.url));

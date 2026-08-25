@@ -2,7 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
-  output: "standalone",
+  // Vercel packages Next.js applications itself. The standalone bundle is
+  // retained for local/container deployments, where it is required.
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   poweredByHeader: false,
   reactStrictMode: true,
   // Prototype runtime binds to a dynamically allocated loopback port. Next's
