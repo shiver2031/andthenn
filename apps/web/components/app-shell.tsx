@@ -4,7 +4,7 @@ import { Button, cn } from "@andthenn/ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   Bell, Building2, ChevronDown, CircleDollarSign, CircleHelp,
-  FileInput, FolderKanban, Gauge, Inbox, LayoutDashboard, Menu, Plus, Search,
+  FolderKanban, Gauge, Inbox, LayoutDashboard, Menu, Plus, Search,
   Settings, UsersRound, X, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -12,11 +12,10 @@ import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const sections: Array<{ label: string; links: Array<{ href: Route; label: string; icon: LucideIcon; badge?: string }> }> = [
+const sections: Array<{ label: string; links: Array<{ href: Route; label: string; icon: LucideIcon }> }> = [
   { label: "Work", links: [
     { href: "/home", label: "Home", icon: LayoutDashboard },
-    { href: "/intake", label: "Intake", icon: Inbox, badge: "4" },
-    { href: "/proposals", label: "Proposals", icon: FileInput, badge: "2" },
+    { href: "/intake", label: "Intake", icon: Inbox },
     { href: "/projects", label: "Projects", icon: FolderKanban },
     { href: "/workload", label: "Workload", icon: UsersRound },
   ] },
@@ -36,20 +35,21 @@ function Brand() {
 
 type ShellActor = { displayName: string; role: "MANAGER" | "EMPLOYEE" | "TEMP_FREELANCER"; accountType: "PERMANENT" | "TEMPORARY" };
 
-function Sidebar({ close, actor, onHelp, onProfile }: { close?: () => void; actor: ShellActor; onHelp: () => void; onProfile: () => void }) {
+function Sidebar({ close, actor, navCounts, onHelp, onProfile }: { close?: (() => void) | undefined; actor: ShellActor; navCounts?: { actionable: number } | undefined; onHelp: () => void; onProfile: () => void }) {
   const path = usePathname();
   const visibleSections = actor.accountType === "TEMPORARY"
     ? sections.map((section) => ({ ...section, links: section.links.filter((link) => link.href === "/home" || link.href === "/projects") })).filter((section) => section.links.length)
     : actor.role === "EMPLOYEE"
-      ? sections.map((section) => ({ ...section, links: section.links.filter((link) => link.href === "/home" || link.href === "/projects" || link.href === "/workload") })).filter((section) => section.links.length)
+      ? sections.map((section) => ({ ...section, links: section.links.filter((link) => link.href === "/home" || link.href === "/projects") })).filter((section) => section.links.length)
       : sections;
   return <aside className="flex h-full w-[248px] flex-col bg-[#11121a] px-3 py-4 text-zinc-300">
     <div className="px-2 pb-7"><Brand /></div>
     <nav aria-label="Primary" className="flex-1 space-y-6">
       {visibleSections.map((section) => <div key={section.label}>
         <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[.18em] text-zinc-300">{section.label}</p>
-        <div className="space-y-1">{section.links.map(({ href, label, icon: Icon, badge }) => {
+        <div className="space-y-1">{section.links.map(({ href, label, icon: Icon }) => {
           const active = path === href || (href !== "/home" && path.startsWith(`${href}/`));
+          const badge = label === "Intake" && actor.role === "MANAGER" && navCounts?.actionable ? String(navCounts.actionable) : undefined;
           return <Link {...(close ? { onClick: close } : {})} key={href} href={href} className={cn("relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400", active ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/[.06] hover:text-white")}>
             <span className="contents">
             {active && <motion.span layoutId="nav-active" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-violet-400" />}
@@ -64,14 +64,14 @@ function Sidebar({ close, actor, onHelp, onProfile }: { close?: () => void; acto
       {actor.role === "MANAGER" && <Link href="/admin" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-xs font-semibold text-zinc-300 hover:bg-white/[.06] hover:text-white"><Settings size={16} /> Settings</Link>}
       <button onClick={onHelp} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-xs font-semibold text-zinc-300 hover:bg-white/[.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"><CircleHelp size={16} /> Help &amp; support</button>
       <button onClick={onProfile} aria-label={`Open profile menu for ${actor.displayName}`} className="mt-2 flex min-h-11 w-full items-center gap-3 rounded-xl bg-white/[.045] p-2 text-left hover:bg-white/[.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
-        <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-[10px] font-bold text-white">MS</span>
+        <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 text-[10px] font-bold text-white">{actor.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span>
         <span className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-zinc-200">{actor.displayName}</span><span className="block text-[10px] text-zinc-300">{actor.role.replace("_", " ")}</span></span><ChevronDown size={14} />
       </button>
     </div>
   </aside>;
 }
 
-export function AppShell({ children, actor }: { children: React.ReactNode; actor: ShellActor }) {
+export function AppShell({ children, actor, navCounts }: { children: React.ReactNode; actor: ShellActor; navCounts?: { actionable: number } | undefined }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -90,14 +90,14 @@ export function AppShell({ children, actor }: { children: React.ReactNode; actor
   async function logout() { await fetch("/api/prototype/session", { method: "DELETE" }).catch(() => undefined); location.assign("/login"); }
   return <div className="min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
     <a className="skip-link" href="#main-content">Skip to main content</a>
-    <div className="hidden lg:block"><div className="fixed inset-y-0 left-0"><Sidebar actor={actor} onHelp={() => setHelpOpen(true)} onProfile={() => setProfileOpen(true)} /></div></div>
-    <AnimatePresence>{mobileOpen && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)}><motion.div initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }} transition={{ duration: reduced ? 0 : .22 }} className="h-full w-[248px]" onClick={(event) => event.stopPropagation()}><Sidebar actor={actor} close={() => setMobileOpen(false)} onHelp={() => setHelpOpen(true)} onProfile={() => setProfileOpen(true)} /></motion.div></motion.div>}</AnimatePresence>
+    <div className="hidden lg:block"><div className="fixed inset-y-0 left-0"><Sidebar actor={actor} navCounts={navCounts} onHelp={() => setHelpOpen(true)} onProfile={() => setProfileOpen(true)} /></div></div>
+    <AnimatePresence>{mobileOpen && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)}><motion.div initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }} transition={{ duration: reduced ? 0 : .22 }} className="h-full w-[248px]" onClick={(event) => event.stopPropagation()}><Sidebar actor={actor} navCounts={navCounts} close={() => setMobileOpen(false)} onHelp={() => setHelpOpen(true)} onProfile={() => setProfileOpen(true)} /></motion.div></motion.div>}</AnimatePresence>
     <div className="min-w-0">
       <header className="sticky top-0 z-30 flex h-16 items-center border-b border-zinc-200/80 bg-[#f6f5f1]/90 px-4 backdrop-blur-xl md:px-7">
         <button aria-label="Open navigation" onClick={() => setMobileOpen(true)} className="mr-3 grid size-10 place-items-center rounded-xl hover:bg-zinc-200/60 lg:hidden"><Menu size={20} /></button>
         {hasGlobalSearch ? <button onClick={() => setSearchOpen(true)} className="flex h-10 min-w-0 max-w-lg flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-left text-sm text-zinc-600 shadow-sm hover:border-zinc-300"><Search className="shrink-0" size={17} /><span className="min-w-0 flex-1 truncate">Search tasks, projects, clients…</span><kbd className="hidden rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] text-zinc-600 sm:block">⌘ K</kbd></button> : <div className="flex-1" />}
         <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:ml-auto sm:pl-4">
-          <span className="hidden items-center gap-2 sm:inline-flex"><span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-700">Prototype</span><Button onClick={() => setNewOpen(true)} size="sm"><Plus size={15} /> New</Button></span>
+          <span className="hidden items-center gap-2 sm:inline-flex"><span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-700">Prototype</span>{actor.role === "MANAGER" && <Button onClick={() => setNewOpen(true)} size="sm"><Plus size={15} /> New</Button>}</span>
           <Link aria-label="Notifications" href="/notifications" className="relative grid size-10 place-items-center rounded-xl text-zinc-500 hover:bg-white"><Bell size={18} /><span className="absolute right-2 top-2 size-1.5 rounded-full bg-fuchsia-500 ring-2 ring-[#f6f5f1]" /></Link>
         </div>
       </header>

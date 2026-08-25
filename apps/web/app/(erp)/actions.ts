@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, isNull,
+  activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, inArray, isNull,
   memberships, notifications, planningScenarios, projectMemberships, projectPacks, projects, taskAssignees,
   tasks, timeEntries, workflowStages, workflows,
 } from "@andthenn/db";
@@ -99,6 +99,35 @@ export async function createTask(form: FormData) {
     await audit(tx as unknown as ReturnType<typeof createDatabase>["db"], actor, "task.created", "TASK", created!.id, null, { deliverableId, ownerId, dueAt: dueAt.toISOString() });
   });
   revalidatePath(`/projects/${deliverable.projectId}`);
+}
+
+export async function updateProjectTask(form: FormData) {
+  const actor = await actorOrThrow(); authorize(actor, "projects:activate");
+  const taskId = text(form, "taskId"); const expectedVersion = Number(text(form, "expectedVersion"));
+  const primaryOwnerId = text(form, "primaryOwnerId");
+  const collaboratorIds = JSON.parse(text(form, "collaboratorIds") || "[]") as unknown;
+  if (!Array.isArray(collaboratorIds) || !collaboratorIds.every((id) => typeof id === "string")) throw new Error("Collaborators are invalid");
+  if (!primaryOwnerId || collaboratorIds.includes(primaryOwnerId) || new Set(collaboratorIds).size !== collaboratorIds.length) throw new Error("Choose one primary owner and distinct collaborators");
+  const { db } = createDatabase();
+  const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.organizationId, actor.organizationId))).limit(1);
+  if (!task) throw new Error("Task not found");
+  const dueAt = date(form, "dueAt");
+  const [deliverable] = await db.select({ id: deliverables.id, projectId: deliverables.projectId, dueAt: deliverables.dueAt }).from(deliverables).where(and(eq(deliverables.id, task.deliverableId), eq(deliverables.organizationId, actor.organizationId))).limit(1);
+  if (!deliverable || dueAt > deliverable.dueAt) throw new Error("Task due date must be on or before its output deadline");
+  const memberIds = [primaryOwnerId, ...collaboratorIds];
+  const active = await db.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.status, "ACTIVE"), inArray(memberships.id, memberIds)));
+  if (active.length !== memberIds.length) throw new Error("Choose active team members");
+  await db.transaction(async (tx) => {
+    const [changed] = await tx.update(tasks).set({ name: text(form, "name"), description: text(form, "description"), priority: text(form, "priority") || "NORMAL", dueAt, estimatedMinutes: text(form, "estimatedMinutes") ? Number(text(form, "estimatedMinutes")) : null, version: expectedVersion + 1, updatedAt: new Date() }).where(and(eq(tasks.id, taskId), eq(tasks.version, expectedVersion))).returning();
+    if (!changed) throw new Error("This task changed elsewhere. Refresh and retry.");
+    await tx.update(taskAssignees).set({ removedAt: new Date() }).where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.organizationId, actor.organizationId), isNull(taskAssignees.removedAt)));
+    for (const assignment of [{ membershipId: primaryOwnerId, kind: "PRIMARY" as const }, ...collaboratorIds.map((membershipId) => ({ membershipId, kind: "COLLABORATOR" as const }))]) {
+      await tx.insert(taskAssignees).values({ organizationId: actor.organizationId, taskId, membershipId: assignment.membershipId, kind: assignment.kind, assignedByMembershipId: actor.membershipId }).onConflictDoUpdate({ target: [taskAssignees.taskId, taskAssignees.membershipId], set: { kind: assignment.kind, removedAt: null, assignedAt: new Date(), assignedByMembershipId: actor.membershipId } });
+    }
+    await tx.insert(notifications).values({ organizationId: actor.organizationId, recipientMembershipId: primaryOwnerId, eventType: "task.assigned", title: "Task assignment updated", body: changed.name, objectType: "TASK", objectId: taskId });
+    await audit(tx as unknown as ReturnType<typeof createDatabase>["db"], actor, "task.updated", "TASK", taskId, { version: expectedVersion }, { version: expectedVersion + 1, primaryOwnerId, collaboratorIds });
+  });
+  revalidatePath(`/projects`); revalidatePath(`/tasks/${taskId}`);
 }
 
 export async function moveTask(form: FormData) {

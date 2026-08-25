@@ -1,6 +1,62 @@
 import { z } from "zod";
 import { idSchema, isoDateSchema, nonEmptyTextSchema } from "./common";
 
+const optionalId = idSchema.nullable();
+export const projectSetupDeliverableSchema = z.object({
+  id: z.string().uuid(),
+  name: nonEmptyTextSchema.max(300),
+  quantity: z.number().int().positive().default(1),
+  format: nonEmptyTextSchema.max(120),
+  dueAt: isoDateSchema,
+  notes: z.string().max(10_000).default(""),
+});
+
+export const projectSetupTaskSchema = z.object({
+  id: z.string().uuid(),
+  deliverableId: idSchema,
+  name: nonEmptyTextSchema.max(300),
+  description: z.string().max(10_000).default(""),
+  priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"),
+  dueAt: isoDateSchema,
+  estimatedMinutes: z.number().int().positive().nullable().default(null),
+  primaryOwnerId: idSchema,
+  collaboratorIds: z.array(idSchema).default([]),
+}).superRefine((task, ctx) => {
+  if (task.collaboratorIds.includes(task.primaryOwnerId)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["collaboratorIds"], message: "Primary owner cannot also be a collaborator" });
+  }
+  if (new Set(task.collaboratorIds).size !== task.collaboratorIds.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["collaboratorIds"], message: "A collaborator can only be assigned once" });
+  }
+});
+
+export const projectSetupDraftSchema = z.object({
+  schemaVersion: z.literal(1),
+  intakeItemId: optionalId,
+  title: nonEmptyTextSchema.max(300),
+  brief: z.string().max(10_000).default(""),
+  clientId: idSchema,
+  ownerMembershipId: idSchema,
+  deadline: isoDateSchema,
+  budgetMinor: z.number().int().nonnegative().nullable().default(null),
+  currency: z.string().length(3).default("INR"),
+  notes: z.string().max(10_000).default(""),
+  deliverables: z.array(projectSetupDeliverableSchema).min(1),
+  tasks: z.array(projectSetupTaskSchema).min(1),
+});
+
+export const projectSetupSaveSchema = z.object({
+  proposalId: idSchema,
+  expectedVersion: z.number().int().nonnegative(),
+  draft: projectSetupDraftSchema,
+});
+
+export const projectSetupFinalizeSchema = z.object({
+  proposalId: idSchema,
+  expectedVersion: z.number().int().nonnegative(),
+  idempotencyKey: z.string().min(16).max(200),
+});
+
 const taskDraftSchema = z.object({
   id: idSchema,
   name: nonEmptyTextSchema.max(300),
@@ -60,4 +116,7 @@ export const workflowMigrationSchema = z.object({
 });
 
 export type ActivationInput = z.infer<typeof activationSchema>;
+export type ProjectSetupDraft = z.infer<typeof projectSetupDraftSchema>;
+export type ProjectSetupSaveInput = z.infer<typeof projectSetupSaveSchema>;
+export type ProjectSetupFinalizeInput = z.infer<typeof projectSetupFinalizeSchema>;
 export type TaskTransitionInput = z.infer<typeof taskTransitionSchema>;

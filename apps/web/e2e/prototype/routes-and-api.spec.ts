@@ -12,7 +12,7 @@ test.describe("ACC-02 and ACC-04 route/control responsiveness", () => {
     await signIn(page);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    const routes = ["/home", "/intake", "/proposals", "/projects", "/clients", "/commercial", "/workload", "/reports", "/notifications", "/search?q=aster", "/admin"];
+    const routes = ["/home", "/intake", "/intake?view=setups", "/intake?view=history", "/projects", "/clients", "/commercial", "/workload", "/reports", "/notifications", "/search?q=aster", "/admin"];
     for (const viewport of [{ width: 375, height: 812 }, { width: 768, height: 900 }, { width: 1024, height: 900 }, { width: 1440, height: 900 }]) {
       await page.setViewportSize(viewport);
       for (const route of routes) {
@@ -23,6 +23,13 @@ test.describe("ACC-02 and ACC-04 route/control responsiveness", () => {
       }
     }
     expect(errors.filter((message) => !message.includes("due to access control checks."))).toEqual([]);
+  });
+
+  test("legacy proposals links resolve to the canonical intake setups view", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/proposals");
+    await expect(page).toHaveURL(/\/intake\?view=setups$/);
+    await expect(page.getByRole("heading", { name: "Intake" })).toBeVisible();
   });
 
   test("shell controls have a defined keyboard outcome", async ({ page }) => {

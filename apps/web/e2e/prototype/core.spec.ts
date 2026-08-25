@@ -17,6 +17,20 @@ test.describe("ACC-01 persona and shell", () => {
 });
 
 test.describe("ACC-03 intake persistence", () => {
+  test("queue, setups, navigation badge, and legacy proposal links share one source of truth", async ({ page }) => {
+    await signIn(page);
+    await expect(page.getByRole("heading", { name: "Welcome back, Mira." })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Proposals/i })).toHaveCount(0);
+    await expect(page.locator('nav[aria-label="Primary"] a[href="/intake"]').getByText("4", { exact: true })).toBeVisible();
+    await page.goto("/intake?view=queue");
+    await expect(page.getByRole("link", { name: /Queue.*2/i })).toBeVisible();
+    await page.getByRole("link", { name: /Setups.*2/i }).click();
+    await expect(page.getByText("Northstar summer stay campaign", { exact: true })).toBeVisible();
+    await expect(page.getByText("Juniper launch toolkit", { exact: true })).toBeVisible();
+    await page.goto("/proposals");
+    await expect(page).toHaveURL(/\/intake\?view=setups$/);
+  });
+
   test("manual intake persists after reload", async ({ page }) => {
     await signIn(page);
     await page.goto("/intake");

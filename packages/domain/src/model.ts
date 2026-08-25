@@ -44,6 +44,7 @@ export type IntakeStatus =
   | "CLAIMED"
   | "NEEDS_MANAGER_INPUT"
   | "READY_FOR_DECISION"
+  | "SETUP_IN_PROGRESS"
   | "CONVERTED"
   | "IGNORED"
   | "ARCHIVED";

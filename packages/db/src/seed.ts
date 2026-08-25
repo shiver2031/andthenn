@@ -1,158 +1,66 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { closeDatabase, createDatabase } from "./client";
-import {
-  brands,
-  capacitySchedules,
-  clients,
-  contacts,
-  deliverables,
-  featureFlags,
-  fileAssets,
-  fileVersions,
-  intakeItems,
-  intakeSourceItems,
-  memberships,
-  notificationPreferences,
-  organizationSettings,
-  organizations,
-  profiles,
-  projectMemberships,
-  projects,
-  proposals,
-  rateCards,
-  rateItems,
-  reviewHubs,
-  reviewShares,
-  taskAssignees,
-  tasks,
-  workflows,
-  workflowStages,
-} from "./schema";
+import { brands, capacitySchedules, clients, contacts, deliverables, featureFlags, fileAssets, fileVersions, intakeConversions, intakeItems, intakeSourceItems, memberships, notificationPreferences, organizationSettings, organizations, profiles, projectMemberships, projects, proposals, rateCards, rateItems, reviewHubs, reviewShares, taskAssignees, tasks, workflows, workflowStages } from "./schema";
 
 const { db } = createDatabase();
-
-// Fixed identifiers make documented URLs, browser tests, and persona sessions
-// deterministic. Scenario data created by the UI still uses database UUIDs.
-const orgId = "20000000-0000-4000-8000-000000000001";
-const managerProfileId = "21000000-0000-4000-8000-000000000001";
-const producerProfileId = "21000000-0000-4000-8000-000000000002";
-const editorProfileId = "21000000-0000-4000-8000-000000000003";
-const tempProfileId = "21000000-0000-4000-8000-000000000004";
-const expiredProfileId = "21000000-0000-4000-8000-000000000005";
-const managerMembershipId = "22000000-0000-4000-8000-000000000001";
-const producerMembershipId = "22000000-0000-4000-8000-000000000002";
-const editorMembershipId = "22000000-0000-4000-8000-000000000003";
-const tempMembershipId = "22000000-0000-4000-8000-000000000004";
-const expiredMembershipId = "22000000-0000-4000-8000-000000000005";
-const clientId = randomUUID();
-const brandId = randomUUID();
-const contactId = randomUUID();
-const projectId = randomUUID();
-const workflowId = randomUUID();
-const assignedStageId = randomUUID();
-const progressStageId = randomUUID();
-const internalStageId = randomUUID();
-const clientReviewStageId = randomUUID();
-const deliverableId = randomUUID();
-const taskId = randomUUID();
-const fileAssetId = randomUUID();
-const fileVersionId = randomUUID();
-const reviewHubId = randomUUID();
+const ids = {
+  org: "20000000-0000-4000-8000-000000000001", managerProfile: "21000000-0000-4000-8000-000000000001", producerProfile: "21000000-0000-4000-8000-000000000002", editorProfile: "21000000-0000-4000-8000-000000000003", tempProfile: "21000000-0000-4000-8000-000000000004", expiredProfile: "21000000-0000-4000-8000-000000000005",
+  manager: "22000000-0000-4000-8000-000000000001", producer: "22000000-0000-4000-8000-000000000002", editor: "22000000-0000-4000-8000-000000000003", temp: "22000000-0000-4000-8000-000000000004", expired: "22000000-0000-4000-8000-000000000005",
+  aster: "23000000-0000-4000-8000-000000000001", northstar: "23000000-0000-4000-8000-000000000002", juniper: "23000000-0000-4000-8000-000000000003", brand: "24000000-0000-4000-8000-000000000001", contact: "25000000-0000-4000-8000-000000000001",
+  asterIntake: "26000000-0000-4000-8000-000000000001", northstarIntake: "26000000-0000-4000-8000-000000000002", queueOne: "26000000-0000-4000-8000-000000000003", queueTwo: "26000000-0000-4000-8000-000000000004",
+  asterProposal: "27000000-0000-4000-8000-000000000001", northstarProposal: "27000000-0000-4000-8000-000000000002", manualProposal: "27000000-0000-4000-8000-000000000003",
+  asterProject: "28000000-0000-4000-8000-000000000001", juniperProject: "28000000-0000-4000-8000-000000000002", asterWorkflow: "29000000-0000-4000-8000-000000000001", juniperWorkflow: "29000000-0000-4000-8000-000000000002",
+  asterBriefing: "2a000000-0000-4000-8000-000000000001", asterReview: "2a000000-0000-4000-8000-000000000002", juniperBriefing: "2a000000-0000-4000-8000-000000000003", asterDeliverable: "2b000000-0000-4000-8000-000000000001", juniperDeliverable: "2b000000-0000-4000-8000-000000000002", asterReviewTask: "2c000000-0000-4000-8000-000000000001", asterCompleteTask: "2c000000-0000-4000-8000-000000000002", juniperOverdueTask: "2c000000-0000-4000-8000-000000000003", asset: "2d000000-0000-4000-8000-000000000001", version: "2e000000-0000-4000-8000-000000000001", hub: "2f000000-0000-4000-8000-000000000001",
+};
+const reference = new Date(process.env.DEMO_REFERENCE_DATE ?? Date.now());
+const at = (days: number) => new Date(reference.getTime() + days * 86_400_000);
+const draft = (input: { intakeItemId: string | null; title: string; clientId: string; ownerMembershipId: string; deadline: Date; fixture: "001" | "002" | "003" }) => {
+  const outputId = `30000000-0000-4000-8000-000000000${input.fixture}`;
+  const taskId = `31000000-0000-4000-8000-000000000${input.fixture}`;
+  return { schemaVersion: 1, intakeItemId: input.intakeItemId, title: input.title, brief: "A saved setup ready for the manager to complete.", clientId: input.clientId, ownerMembershipId: input.ownerMembershipId, deadline: input.deadline.toISOString(), budgetMinor: 840_000_00, currency: "INR", notes: "", deliverables: [{ id: outputId, name: "Campaign film", quantity: 1, format: "4K master", dueAt: at(12).toISOString(), notes: "" }], tasks: [{ id: taskId, deliverableId: outputId, name: "Create first edit", description: "", priority: "HIGH", dueAt: at(10).toISOString(), estimatedMinutes: 480, primaryOwnerId: input.ownerMembershipId, collaboratorIds: [] }] };
+};
 
 await db.transaction(async (tx) => {
-  await tx.insert(organizations).values({ id: orgId, name: "AndThenn Media", slug: "andthenn-media" }).onConflictDoNothing();
-  await tx.insert(organizationSettings).values({
-    organizationId: orgId,
-    immediateEmailEvents: ["TASK_ASSIGNED", "MENTION", "DUE_RISK", "OVERDUE", "EXTERNAL_FEEDBACK", "TEMP_EXPIRING", "JOB_FAILED"],
-    quotationLegalFields: { gstReady: true, placeOfSupply: "Maharashtra", currency: "INR" },
-  }).onConflictDoNothing();
-  await tx.insert(featureFlags).values([
-    { organizationId: orgId, key: "AI_TRANSCRIPTION", enabled: false },
-    { organizationId: orgId, key: "AI_OCR", enabled: false },
-    { organizationId: orgId, key: "AI_SUGGESTIONS", enabled: false },
-  ]).onConflictDoNothing();
-
+  await tx.insert(organizations).values({ id: ids.org, name: "AndThenn Media", slug: "andthenn-media" }).onConflictDoNothing();
+  await tx.insert(organizationSettings).values({ organizationId: ids.org, immediateEmailEvents: ["TASK_ASSIGNED", "MENTION", "DUE_RISK", "OVERDUE", "EXTERNAL_FEEDBACK", "TEMP_EXPIRING", "JOB_FAILED"], quotationLegalFields: { gstReady: true, placeOfSupply: "Maharashtra", currency: "INR" } }).onConflictDoNothing();
+  await tx.insert(featureFlags).values(["AI_TRANSCRIPTION", "AI_OCR", "AI_SUGGESTIONS"].map((key) => ({ organizationId: ids.org, key, enabled: false }))).onConflictDoNothing();
   await tx.insert(profiles).values([
-    { id: managerProfileId, authUserId: "10000000-0000-4000-8000-000000000001", displayName: "Mira Shah", email: "mira@andthenn.example" },
-    { id: producerProfileId, authUserId: "10000000-0000-4000-8000-000000000002", displayName: "Arjun Menon", email: "arjun@andthenn.example" },
-    { id: editorProfileId, authUserId: "10000000-0000-4000-8000-000000000003", displayName: "Naina Kapoor", email: "naina@andthenn.example" },
-    { id: tempProfileId, authUserId: "10000000-0000-4000-8000-000000000004", displayName: "Kabir Rao", email: "kabir.freelance@example.com" },
-    { id: expiredProfileId, authUserId: "10000000-0000-4000-8000-000000000005", displayName: "Nikhil Das", email: "nikhil.expired@example.com" },
+    { id: ids.managerProfile, authUserId: "10000000-0000-4000-8000-000000000001", displayName: "Mira Shah", email: "mira@andthenn.example" }, { id: ids.producerProfile, authUserId: "10000000-0000-4000-8000-000000000002", displayName: "Arjun Menon", email: "arjun@andthenn.example" }, { id: ids.editorProfile, authUserId: "10000000-0000-4000-8000-000000000003", displayName: "Naina Kapoor", email: "naina@andthenn.example" }, { id: ids.tempProfile, authUserId: "10000000-0000-4000-8000-000000000004", displayName: "Kabir Rao", email: "kabir.freelance@example.com" }, { id: ids.expiredProfile, authUserId: "10000000-0000-4000-8000-000000000005", displayName: "Nikhil Das", email: "nikhil.expired@example.com" },
   ]).onConflictDoNothing();
-
   await tx.insert(memberships).values([
-    { id: managerMembershipId, organizationId: orgId, profileId: managerProfileId, role: "MANAGER", accountType: "PERMANENT", status: "ACTIVE", financeAccess: true },
-    { id: producerMembershipId, organizationId: orgId, profileId: producerProfileId, role: "EMPLOYEE", accountType: "PERMANENT", status: "ACTIVE", financeAccess: false },
-    { id: editorMembershipId, organizationId: orgId, profileId: editorProfileId, role: "EMPLOYEE", accountType: "PERMANENT", status: "ACTIVE", financeAccess: false },
-    { id: tempMembershipId, organizationId: orgId, profileId: tempProfileId, role: "TEMP_FREELANCER", accountType: "TEMPORARY", status: "ACTIVE", expiresAt: new Date("2026-12-31T18:29:59.000Z") },
-    { id: expiredMembershipId, organizationId: orgId, profileId: expiredProfileId, role: "TEMP_FREELANCER", accountType: "TEMPORARY", status: "EXPIRED", expiresAt: new Date("2026-01-01T00:00:00.000Z") },
+    { id: ids.manager, organizationId: ids.org, profileId: ids.managerProfile, role: "MANAGER", accountType: "PERMANENT", status: "ACTIVE", financeAccess: true }, { id: ids.producer, organizationId: ids.org, profileId: ids.producerProfile, role: "EMPLOYEE", accountType: "PERMANENT", status: "ACTIVE" }, { id: ids.editor, organizationId: ids.org, profileId: ids.editorProfile, role: "EMPLOYEE", accountType: "PERMANENT", status: "ACTIVE" }, { id: ids.temp, organizationId: ids.org, profileId: ids.tempProfile, role: "TEMP_FREELANCER", accountType: "TEMPORARY", status: "ACTIVE", expiresAt: at(120) }, { id: ids.expired, organizationId: ids.org, profileId: ids.expiredProfile, role: "TEMP_FREELANCER", accountType: "TEMPORARY", status: "EXPIRED", expiresAt: at(-30) },
+  ]).onConflictDoNothing();
+  await tx.insert(capacitySchedules).values([ids.manager, ids.producer, ids.editor, ids.temp].map((membershipId, index) => ({ organizationId: ids.org, membershipId, effectiveFrom: reference.toISOString().slice(0, 10), weeklyMinutes: index === 0 ? 1800 : index === 3 ? 1200 : 2400 }))).onConflictDoNothing();
+  await tx.insert(clients).values([{ id: ids.aster, organizationId: ids.org, name: "Aster House", notes: "Premium hospitality group" }, { id: ids.northstar, organizationId: ids.org, name: "Northstar Hotels", notes: "Hospitality client" }, { id: ids.juniper, organizationId: ids.org, name: "Juniper Labs", notes: "Technology client" }]).onConflictDoNothing();
+  await tx.insert(brands).values({ id: ids.brand, organizationId: ids.org, clientId: ids.aster, name: "Aster Afterhours" }).onConflictDoNothing();
+  await tx.insert(contacts).values({ id: ids.contact, organizationId: ids.org, clientId: ids.aster, brandId: ids.brand, name: "Riya Malhotra", roleLabel: "Brand Lead" }).onConflictDoNothing();
+  await tx.insert(rateCards).values({ id: "32000000-0000-4000-8000-000000000001", organizationId: ids.org, clientId: ids.aster, name: "FY 2026 Production", currency: "INR" }).onConflictDoNothing();
+  await tx.insert(rateItems).values([{ organizationId: ids.org, rateCardId: "32000000-0000-4000-8000-000000000001", serviceCode: "FILM-30", description: "30-second campaign film", unit: "film", standardPriceMinor: 850_000_00, effectiveFrom: reference.toISOString().slice(0, 10) }, { organizationId: ids.org, rateCardId: "32000000-0000-4000-8000-000000000001", serviceCode: "SOCIAL-CUT", description: "Social cut-down", unit: "cut", standardPriceMinor: 65_000_00, effectiveFrom: reference.toISOString().slice(0, 10) }]).onConflictDoNothing();
+
+  await tx.insert(intakeItems).values([
+    { id: ids.asterIntake, organizationId: ids.org, status: "CONVERTED", sourceChannel: "WHATSAPP", title: "Aster monsoon launch", confirmedClientId: ids.aster, confirmedSummary: "Launch film and social cut-downs.", confirmedProjectId: ids.asterProject, convertedAt: at(-7) }, { id: ids.northstarIntake, organizationId: ids.org, status: "SETUP_IN_PROGRESS", sourceChannel: "MANUAL", title: "Northstar summer stay campaign", confirmedClientId: ids.northstar, confirmedSummary: "Campaign film and social edit package.", claimedByMembershipId: ids.manager, claimedAt: at(-1) }, { id: ids.queueOne, organizationId: ids.org, status: "READY_FOR_DECISION", sourceChannel: "EMAIL", title: "Juniper product film request", confirmedClientId: ids.juniper, confirmedSummary: "A product film request ready for manager review." }, { id: ids.queueTwo, organizationId: ids.org, status: "NEEDS_MANAGER_INPUT", sourceChannel: "WHATSAPP", title: "Aster festive social request", confirmedClientId: ids.aster, confirmedSummary: "Needs final delivery timing before setup." },
+  ]).onConflictDoNothing();
+  await tx.insert(intakeSourceItems).values([
+    { organizationId: ids.org, intakeItemId: ids.asterIntake, provider: "META_WHATSAPP", providerMessageId: "demo-wa-aster", sender: "+919999999999", capturedAt: at(-14), sequence: 1, kind: "TEXT", rawText: "Need a launch film and three vertical edits.", contentHash: createHash("sha256").update("demo-wa-aster").digest("hex") }, { organizationId: ids.org, intakeItemId: ids.northstarIntake, provider: "MANUAL", providerMessageId: "demo-manual-northstar", sender: "Mira Shah", capturedAt: at(-2), sequence: 1, kind: "TEXT", rawText: "Northstar needs a summer stay campaign.", contentHash: createHash("sha256").update("demo-manual-northstar").digest("hex") }, { organizationId: ids.org, intakeItemId: ids.queueOne, provider: "GMAIL", providerMessageId: "demo-email-juniper", sender: "hello@juniper.example", capturedAt: at(-1), sequence: 1, kind: "TEXT", rawText: "Please review our product film request.", contentHash: createHash("sha256").update("demo-email-juniper").digest("hex") }, { organizationId: ids.org, intakeItemId: ids.queueTwo, provider: "META_WHATSAPP", providerMessageId: "demo-wa-aster-festive", sender: "+918888888888", capturedAt: reference, sequence: 1, kind: "TEXT", rawText: "Can we discuss a festive social package?", contentHash: createHash("sha256").update("demo-wa-aster-festive").digest("hex") },
+  ]).onConflictDoNothing();
+  await tx.insert(proposals).values([
+    { id: ids.asterProposal, organizationId: ids.org, intakeItemId: ids.asterIntake, clientId: ids.aster, title: "Aster Afterhours — Monsoon launch", brief: "A cinematic launch film supported by three vertical cut-downs.", draftData: draft({ intakeItemId: ids.asterIntake, title: "Aster Afterhours / Monsoon", clientId: ids.aster, ownerMembershipId: ids.producer, deadline: at(14), fixture: "001" }), status: "APPROVED", decidedByMembershipId: ids.manager, decidedAt: at(-7), budgetMinor: 1_200_000_00 }, { id: ids.northstarProposal, organizationId: ids.org, intakeItemId: ids.northstarIntake, clientId: ids.northstar, title: "Northstar summer stay campaign", brief: "A saved intake-backed project setup.", draftData: draft({ intakeItemId: ids.northstarIntake, title: "Northstar summer stay campaign", clientId: ids.northstar, ownerMembershipId: ids.producer, deadline: at(14), fixture: "002" }), status: "PENDING", budgetMinor: 840_000_00 }, { id: ids.manualProposal, organizationId: ids.org, clientId: ids.juniper, title: "Juniper launch toolkit", brief: "A manager-created project setup.", draftData: draft({ intakeItemId: null, title: "Juniper launch toolkit", clientId: ids.juniper, ownerMembershipId: ids.editor, deadline: at(14), fixture: "003" }), status: "PENDING", budgetMinor: 560_000_00 },
   ]).onConflictDoNothing();
 
-  await tx.insert(capacitySchedules).values([
-    { organizationId: orgId, membershipId: managerMembershipId, effectiveFrom: "2026-01-01", weeklyMinutes: 1800 },
-    { organizationId: orgId, membershipId: producerMembershipId, effectiveFrom: "2026-01-01", weeklyMinutes: 2400 },
-    { organizationId: orgId, membershipId: editorMembershipId, effectiveFrom: "2026-01-01", weeklyMinutes: 2400 },
-    { organizationId: orgId, membershipId: tempMembershipId, effectiveFrom: "2026-01-01", weeklyMinutes: 1200 },
-  ]);
-
-  await tx.insert(clients).values({ id: clientId, organizationId: orgId, name: "Aster House", notes: "Premium hospitality group" });
-  await tx.insert(brands).values({ id: brandId, organizationId: orgId, clientId, name: "Aster Afterhours" });
-  await tx.insert(contacts).values({ id: contactId, organizationId: orgId, clientId, brandId, name: "Riya Malhotra", roleLabel: "Brand Lead" });
-
-  const rateCardId = randomUUID();
-  await tx.insert(rateCards).values({ id: rateCardId, organizationId: orgId, clientId, name: "FY 2026 Production", currency: "INR" });
-  await tx.insert(rateItems).values([
-    { organizationId: orgId, rateCardId, serviceCode: "FILM-30", description: "30-second campaign film", unit: "film", standardPriceMinor: 850_000_00, effectiveFrom: "2026-04-01" },
-    { organizationId: orgId, rateCardId, serviceCode: "SOCIAL-CUT", description: "Social cut-down", unit: "cut", standardPriceMinor: 65_000_00, effectiveFrom: "2026-04-01" },
-  ]);
-
-  const intakeId = randomUUID();
-  await tx.insert(intakeItems).values({ id: intakeId, organizationId: orgId, status: "READY_FOR_DECISION", sourceChannel: "WHATSAPP", title: "Aster monsoon launch", confirmedClientId: clientId, confirmedSummary: "Launch film and social cut-downs for the monsoon menu." });
-  await tx.insert(intakeSourceItems).values({
-    organizationId: orgId,
-    intakeItemId: intakeId,
-    provider: "META_WHATSAPP",
-    providerMessageId: "demo-wa-message-001",
-    sender: "+919999999999",
-    forwarder: "+918888888888",
-    capturedAt: new Date("2026-08-03T10:15:00+05:30"),
-    sequence: 1,
-    kind: "TEXT",
-    rawText: "Need a 30 sec launch film and 3 vertical edits before 21 August.",
-    contentHash: createHash("sha256").update("demo-wa-message-001").digest("hex"),
-  });
-
-  await tx.insert(proposals).values({ organizationId: orgId, intakeItemId: intakeId, clientId, title: "Aster Afterhours — Monsoon launch", brief: "A cinematic launch film supported by three vertical cut-downs.", status: "PENDING", budgetMinor: 1_200_000_00 });
-
-  await tx.insert(projects).values({ id: projectId, organizationId: orgId, clientId, sourceIntakeItemId: intakeId, ownerMembershipId: producerMembershipId, name: "Aster Afterhours / Monsoon", status: "ACTIVE", deadline: new Date("2026-08-21T18:00:00+05:30"), budgetMinor: 1_200_000_00, activatedAt: new Date("2026-08-02T12:00:00+05:30") });
-  await tx.insert(projectMemberships).values([
-    { organizationId: orgId, projectId, membershipId: producerMembershipId, canCreateTasks: true, canShareReviews: true },
-    { organizationId: orgId, projectId, membershipId: editorMembershipId, canShareReviews: true },
-  ]);
-  await tx.insert(workflows).values({ id: workflowId, organizationId: orgId, projectId });
-  await tx.insert(workflowStages).values([
-    { id: assignedStageId, organizationId: orgId, workflowId, name: "Assigned", position: 0, semantic: "NORMAL" },
-    { id: progressStageId, organizationId: orgId, workflowId, name: "In Progress", position: 1, semantic: "NORMAL" },
-    { id: internalStageId, organizationId: orgId, workflowId, name: "Internal Review", position: 2, semantic: "NORMAL" },
-    { id: clientReviewStageId, organizationId: orgId, workflowId, name: "Client Review", position: 3, semantic: "CLIENT_REVIEW" },
-  ]);
-  await tx.insert(deliverables).values({ id: deliverableId, organizationId: orgId, projectId, name: "Hero launch film", quantity: 1, format: "4K master + web proxy", dueAt: new Date("2026-08-18T18:00:00+05:30") });
-  await tx.insert(tasks).values({ id: taskId, organizationId: orgId, deliverableId, currentWorkflowStageId: internalStageId, stateKind: "WORKFLOW", name: "Picture lock and sound mix", description: "Resolve internal notes, export V3, and prepare the selected version for client review.", priority: "HIGH", dueAt: new Date("2026-08-13T18:00:00+05:30"), estimatedMinutes: 960 });
-  await tx.insert(taskAssignees).values([
-    { organizationId: orgId, taskId, membershipId: editorMembershipId, kind: "PRIMARY", assignedByMembershipId: managerMembershipId },
-    { organizationId: orgId, taskId, membershipId: producerMembershipId, kind: "COLLABORATOR", assignedByMembershipId: managerMembershipId },
-  ]);
-  await tx.insert(fileAssets).values({ id: fileAssetId, organizationId: orgId, taskId, logicalName: "Aster launch master" });
-  await tx.insert(fileVersions).values({ id: fileVersionId, organizationId: orgId, fileAssetId, versionNumber: 2, filename: "aster-afterhours-v2.mp4", contentType: "video/mp4", sizeBytes: 482_000_000, checksumSha256: createHash("sha256").update("demo-file-v2").digest("hex"), storageProvider: "SUPABASE_S3", storageKey: `org/${orgId}/task/${taskId}/asset/${fileAssetId}/version/${fileVersionId}/aster-afterhours-v2.mp4`, uploaderMembershipId: editorMembershipId, processingStatus: "READY", mediaMetadata: { durationMs: 31_400, width: 1920, height: 1080 } });
-  await tx.insert(reviewHubs).values({ id: reviewHubId, organizationId: orgId, taskId });
-  await tx.insert(reviewShares).values({ organizationId: orgId, reviewHubId, fileVersionId, tokenHash: createHash("sha256").update("prototype-pepper:demo-review-token").digest("hex"), status: "ACTIVE", expiresAt: new Date("2026-12-03T18:29:59.000Z"), createdByMembershipId: producerMembershipId });
-
-  for (const membershipId of [managerMembershipId, producerMembershipId, editorMembershipId]) {
-    for (const eventType of ["TASK_ASSIGNED", "MENTION", "DUE_RISK", "OVERDUE", "EXTERNAL_FEEDBACK", "JOB_FAILED"]) {
-      await tx.insert(notificationPreferences).values({ organizationId: orgId, membershipId, eventType, emailEnabled: true }).onConflictDoNothing();
-    }
-  }
+  await tx.insert(projects).values([{ id: ids.asterProject, organizationId: ids.org, clientId: ids.aster, proposalId: ids.asterProposal, sourceIntakeItemId: ids.asterIntake, ownerMembershipId: ids.producer, name: "Aster Afterhours / Monsoon", status: "ACTIVE", deadline: at(14), budgetMinor: 1_200_000_00, activatedAt: at(-7) }, { id: ids.juniperProject, organizationId: ids.org, clientId: ids.juniper, ownerMembershipId: ids.editor, name: "Juniper product launch", status: "ACTIVE", deadline: at(8), budgetMinor: 640_000_00, activatedAt: at(-10) }]).onConflictDoNothing();
+  await tx.insert(intakeConversions).values({ organizationId: ids.org, intakeItemId: ids.asterIntake, targetType: "NEW_PROJECT", projectId: ids.asterProject, idempotencyKey: "seed-aster-conversion-v2", convertedByMembershipId: ids.manager }).onConflictDoNothing();
+  await tx.insert(projectMemberships).values([{ organizationId: ids.org, projectId: ids.asterProject, membershipId: ids.producer, canCreateTasks: true, canShareReviews: true }, { organizationId: ids.org, projectId: ids.asterProject, membershipId: ids.editor, canShareReviews: true }, { organizationId: ids.org, projectId: ids.juniperProject, membershipId: ids.editor, canCreateTasks: true, canShareReviews: true }, { organizationId: ids.org, projectId: ids.juniperProject, membershipId: ids.temp, canShareReviews: true }]).onConflictDoNothing();
+  await tx.insert(workflows).values([{ id: ids.asterWorkflow, organizationId: ids.org, projectId: ids.asterProject }, { id: ids.juniperWorkflow, organizationId: ids.org, projectId: ids.juniperProject }]).onConflictDoNothing();
+  await tx.insert(workflowStages).values([{ id: ids.asterBriefing, organizationId: ids.org, workflowId: ids.asterWorkflow, name: "Briefing", position: 0, semantic: "NORMAL" }, { id: ids.asterReview, organizationId: ids.org, workflowId: ids.asterWorkflow, name: "Client review", position: 1, semantic: "CLIENT_REVIEW" }, { id: ids.juniperBriefing, organizationId: ids.org, workflowId: ids.juniperWorkflow, name: "Briefing", position: 0, semantic: "NORMAL" }]).onConflictDoNothing();
+  await tx.insert(deliverables).values([{ id: ids.asterDeliverable, organizationId: ids.org, projectId: ids.asterProject, name: "Hero launch film", quantity: 1, format: "4K master + web proxy", dueAt: at(10) }, { id: ids.juniperDeliverable, organizationId: ids.org, projectId: ids.juniperProject, name: "Product film", quantity: 1, format: "4K master", dueAt: at(6) }]).onConflictDoNothing();
+  await tx.insert(tasks).values([{ id: ids.asterReviewTask, organizationId: ids.org, deliverableId: ids.asterDeliverable, currentWorkflowStageId: ids.asterReview, stateKind: "WORKFLOW", name: "Picture lock and sound mix", description: "Prepare V3 for client review.", priority: "HIGH", dueAt: at(2), estimatedMinutes: 960 }, { id: ids.asterCompleteTask, organizationId: ids.org, deliverableId: ids.asterDeliverable, currentWorkflowStageId: null, stateKind: "COMPLETED", name: "Confirm campaign treatment", description: "Treatment approved.", priority: "NORMAL", dueAt: at(-3), estimatedMinutes: 240, completedAt: at(-2) }, { id: ids.juniperOverdueTask, organizationId: ids.org, deliverableId: ids.juniperDeliverable, currentWorkflowStageId: ids.juniperBriefing, stateKind: "WORKFLOW", name: "Draft product-film storyboards", description: "Storyboard delivery needs manager attention.", priority: "URGENT", dueAt: at(-1), estimatedMinutes: 480 }]).onConflictDoNothing();
+  await tx.insert(taskAssignees).values([{ organizationId: ids.org, taskId: ids.asterReviewTask, membershipId: ids.editor, kind: "PRIMARY", assignedByMembershipId: ids.manager }, { organizationId: ids.org, taskId: ids.asterReviewTask, membershipId: ids.producer, kind: "COLLABORATOR", assignedByMembershipId: ids.manager }, { organizationId: ids.org, taskId: ids.asterCompleteTask, membershipId: ids.producer, kind: "PRIMARY", assignedByMembershipId: ids.manager }, { organizationId: ids.org, taskId: ids.juniperOverdueTask, membershipId: ids.temp, kind: "PRIMARY", assignedByMembershipId: ids.manager }, { organizationId: ids.org, taskId: ids.juniperOverdueTask, membershipId: ids.editor, kind: "COLLABORATOR", assignedByMembershipId: ids.manager }]).onConflictDoNothing();
+  await tx.insert(fileAssets).values({ id: ids.asset, organizationId: ids.org, taskId: ids.asterReviewTask, logicalName: "Aster launch master" }).onConflictDoNothing();
+  await tx.insert(fileVersions).values({ id: ids.version, organizationId: ids.org, fileAssetId: ids.asset, versionNumber: 2, filename: "aster-afterhours-v2.mp4", contentType: "video/mp4", sizeBytes: 482_000_000, checksumSha256: createHash("sha256").update("demo-file-v2").digest("hex"), storageProvider: "SUPABASE_S3", storageKey: `org/${ids.org}/task/${ids.asterReviewTask}/asset/${ids.asset}/version/${ids.version}/aster-afterhours-v2.mp4`, uploaderMembershipId: ids.editor, processingStatus: "READY", mediaMetadata: { durationMs: 31_400, width: 1920, height: 1080 } }).onConflictDoNothing();
+  await tx.insert(reviewHubs).values({ id: ids.hub, organizationId: ids.org, taskId: ids.asterReviewTask }).onConflictDoNothing();
+  await tx.insert(reviewShares).values({ organizationId: ids.org, reviewHubId: ids.hub, fileVersionId: ids.version, tokenHash: createHash("sha256").update("prototype-pepper:demo-review-token").digest("hex"), status: "ACTIVE", expiresAt: at(90), createdByMembershipId: ids.producer }).onConflictDoNothing();
+  for (const membershipId of [ids.manager, ids.producer, ids.editor, ids.temp]) for (const eventType of ["TASK_ASSIGNED", "MENTION", "DUE_RISK", "OVERDUE", "EXTERNAL_FEEDBACK", "JOB_FAILED"]) await tx.insert(notificationPreferences).values({ organizationId: ids.org, membershipId, eventType, emailEnabled: true }).onConflictDoNothing();
 });
 
-console.warn(`Seeded AndThenn demo workspace ${orgId}`);
+console.warn(`Seeded AndThenn demo workspace ${ids.org}`);
 await closeDatabase();

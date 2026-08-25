@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvedState, assertProjectClosure, assertTaskTransition, assertWorkflowStageDeletion, can, calculateQuote, calculateQuoteLine, deadlineAdherence, feedbackState, isReviewShareAccessible, nextDeliverableStatus, splitGst, validateActivation, workloadSummary } from "./index";
+import { approvedState, assertIntakeTransition, assertProjectClosure, assertTaskTransition, assertWorkflowStageDeletion, can, calculateQuote, calculateQuoteLine, deadlineAdherence, feedbackState, isReviewShareAccessible, nextDeliverableStatus, splitGst, validateActivation, workloadSummary } from "./index";
 import type { MembershipContext } from "./model";
 
 function membership(overrides: Partial<MembershipContext> = {}): MembershipContext {
@@ -30,6 +30,19 @@ describe("authorization", () => {
     expect(can(temp, "tasks:contribute", { taskId: "task-collab" }, new Date("2026-02-01"))).toBe(false);
     expect(can({ ...temp, expiresAt: new Date("2027-01-01") }, "tasks:contribute", { taskId: "task-collab" }, new Date("2026-02-01"))).toBe(true);
     expect(can({ ...temp, expiresAt: new Date("2027-01-01") }, "finances:view", { taskId: "task-collab" }, new Date("2026-02-01"))).toBe(false);
+  });
+
+  it("does not let project visibility broaden a worker's task contribution scope", () => {
+    expect(can(membership(), "tasks:contribute", { taskId: "task-other", projectId: "project-1" })).toBe(false);
+    expect(can(membership(), "tasks:contribute", { taskId: "task-collab", projectId: "project-1" })).toBe(true);
+  });
+});
+
+describe("intake setup", () => {
+  it("allows a manager-approved setup to become a converted project, but not to change after conversion", () => {
+    expect(() => assertIntakeTransition("READY_FOR_DECISION", "SETUP_IN_PROGRESS")).not.toThrow();
+    expect(() => assertIntakeTransition("SETUP_IN_PROGRESS", "CONVERTED")).not.toThrow();
+    expect(() => assertIntakeTransition("CONVERTED", "SETUP_IN_PROGRESS")).toThrow(/terminal/i);
   });
 });
 

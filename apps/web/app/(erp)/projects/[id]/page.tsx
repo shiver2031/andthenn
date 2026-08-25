@@ -1,25 +1,6 @@
-import { Badge, Button } from "@andthenn/ui";
-import { ChevronRight, Plus } from "lucide-react";
-import Link from "next/link";
-import { and, clients, createDatabase, deliverables, eq, memberships, projects, tasks, workflowStages, workflows } from "@andthenn/db";
-import { notFound } from "next/navigation";
-import { createDeliverable, createTask } from "../../actions";
-import { resolveActorContext } from "../../../../lib/actor-context";
+import { redirect } from "next/navigation";
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params; const actor = await resolveActorContext(); if (!actor) return null; const { db } = createDatabase();
-  const [project] = await db.select({ id: projects.id, name: projects.name, status: projects.status, deadline: projects.deadline, client: clients.name, ownerMembershipId: projects.ownerMembershipId }).from(projects).innerJoin(clients, eq(clients.id, projects.clientId)).where(and(eq(projects.id, id), eq(projects.organizationId, actor.organizationId))).limit(1);
-  if (!project || (actor.role !== "MANAGER" && project.ownerMembershipId !== actor.membershipId && !actor.visibleProjectIds.has(id))) notFound();
-  const [deliveryRows, memberRows, workflow] = await Promise.all([
-    db.select().from(deliverables).where(and(eq(deliverables.projectId, id), eq(deliverables.organizationId, actor.organizationId))),
-    db.select({ id: memberships.id, name: memberships.id }).from(memberships).where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.status, "ACTIVE"))),
-    db.select().from(workflows).where(and(eq(workflows.projectId, id), eq(workflows.organizationId, actor.organizationId))).limit(1),
-  ]);
-  const stages = workflow[0] ? await db.select().from(workflowStages).where(eq(workflowStages.workflowId, workflow[0].id)) : [];
-  const taskRows = deliveryRows.length ? await Promise.all(deliveryRows.map((deliverable) => db.select().from(tasks).where(and(eq(tasks.deliverableId, deliverable.id), eq(tasks.organizationId, actor.organizationId))))).then((groups) => groups.flat()) : [];
-  return <><nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-xs text-zinc-400"><Link href="/projects">Projects</Link><ChevronRight size={12}/><span>{project.client}</span><ChevronRight size={12}/><span className="text-zinc-700">{project.name}</span></nav>
-    <div className="mb-6 flex items-end justify-between"><div><Badge tone={project.status === "ACTIVE" ? "green" : "violet"}>{project.status.replaceAll("_", " ")}</Badge><h1 className="display mt-2 text-3xl font-bold">{project.name}</h1><p className="mt-1 text-xs text-zinc-400">{project.client} · Due {project.deadline.toLocaleString()}</p></div></div>
-    {actor.role === "MANAGER" && <form action={createDeliverable} className="surface mb-4 grid gap-2 rounded-2xl p-4 md:grid-cols-5"><input type="hidden" name="projectId" value={id}/><input name="name" required placeholder="Deliverable" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><input name="quantity" type="number" min="1" defaultValue="1" required className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><input name="format" required placeholder="Format" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><input name="dueAt" type="datetime-local" required className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><Button type="submit"><Plus size={15}/> Add deliverable</Button></form>}
-    <section className="surface overflow-hidden rounded-2xl"><div className="border-b border-zinc-100 p-5"><h2 className="display text-lg font-bold">Workflow</h2><p className="mt-1 text-xs text-zinc-400">One project workflow, with task changes protected by optimistic concurrency.</p></div>{stages.map((stage) => <div key={stage.id} className="border-b border-zinc-100 p-5"><div className="mb-3 flex items-center gap-2"><span className="size-2 rounded-full bg-violet-500"/><h3 className="text-sm font-bold">{stage.name}</h3>{stage.semantic === "CLIENT_REVIEW" && <Badge tone="amber">Reserved review stage</Badge>}</div>{taskRows.filter((task) => task.currentWorkflowStageId === stage.id).map((task) => <Link key={task.id} href={`/tasks/${task.id}`} className="mb-2 block rounded-xl bg-zinc-50 p-3 text-sm font-semibold hover:bg-violet-50">{task.name}<span className="ml-2 text-xs font-normal text-zinc-400">Due {task.dueAt.toLocaleDateString()}</span></Link>)}</div>)}</section>
-    {actor.role === "MANAGER" && deliveryRows.map((deliverable) => <form key={deliverable.id} action={createTask} className="surface mt-4 grid gap-2 rounded-2xl p-4 md:grid-cols-5"><input type="hidden" name="deliverableId" value={deliverable.id}/><input name="name" required placeholder={`Task for ${deliverable.name}`} className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><select name="ownerMembershipId" required className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"><option value="">Primary owner…</option>{memberRows.map((member) => <option key={member.id} value={member.id}>{member.id === actor.membershipId ? "You" : member.id}</option>)}</select><input name="dueAt" type="datetime-local" required className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><input name="estimatedMinutes" type="number" min="1" placeholder="Estimate (min)" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm"/><Button type="submit">Add task</Button></form>)}</>;
+export default async function ProjectCompatibilityPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/projects?project=${id}`);
 }

@@ -47,6 +47,7 @@ export const intakeStatusEnum = pgEnum("intake_status", [
   "CLAIMED",
   "NEEDS_MANAGER_INPUT",
   "READY_FOR_DECISION",
+  "SETUP_IN_PROGRESS",
   "CONVERTED",
   "IGNORED",
   "ARCHIVED",
@@ -590,10 +591,14 @@ export const proposals = pgTable(
     ),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decisionReason: text("decision_reason"),
+    version: integer("version").notNull().default(0),
     ...auditColumns,
   },
   (table) => [
     index("proposal_org_status_idx").on(table.organizationId, table.status),
+    uniqueIndex("proposal_one_per_intake_unique")
+      .on(table.intakeItemId)
+      .where(sql`${table.intakeItemId} IS NOT NULL`),
   ],
 );
 

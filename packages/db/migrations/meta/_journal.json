@@ -78,6 +78,13 @@
       "when": 1786590000004,
       "tag": "0010_browser_data_api_lockdown",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786590000005,
+      "tag": "0011_intake_setup_wizard",
+      "breakpoints": true
     }
   ]
 }

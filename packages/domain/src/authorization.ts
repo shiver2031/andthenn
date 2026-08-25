@@ -44,7 +44,7 @@ export function can(
     case "tasks:contribute":
     case "time:log":
     case "reviews:comment":
-      return taskVisible || projectVisible;
+      return taskVisible;
     case "reviews:share":
       return taskVisible || membership.reviewShareTaskIds.has(scope.taskId ?? "");
     case "reviews:approve":

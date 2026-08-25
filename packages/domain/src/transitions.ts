@@ -16,10 +16,11 @@ const terminalIntakeStatuses = new Set<IntakeStatus>(["CONVERTED", "IGNORED", "A
 export function assertIntakeTransition(from: IntakeStatus, to: IntakeStatus): void {
   invariant(!terminalIntakeStatuses.has(from), "INTAKE_TERMINAL", "Terminal intake items cannot transition", { from, to });
   const allowed: Record<IntakeStatus, readonly IntakeStatus[]> = {
-    UNASSIGNED: ["CLAIMED", "ARCHIVED", "IGNORED"],
-    CLAIMED: ["UNASSIGNED", "NEEDS_MANAGER_INPUT", "READY_FOR_DECISION", "CONVERTED", "ARCHIVED", "IGNORED"],
-    NEEDS_MANAGER_INPUT: ["READY_FOR_DECISION", "UNASSIGNED", "ARCHIVED", "IGNORED"],
-    READY_FOR_DECISION: ["CLAIMED", "CONVERTED", "ARCHIVED", "IGNORED"],
+    UNASSIGNED: ["CLAIMED", "SETUP_IN_PROGRESS", "ARCHIVED", "IGNORED"],
+    CLAIMED: ["UNASSIGNED", "NEEDS_MANAGER_INPUT", "READY_FOR_DECISION", "SETUP_IN_PROGRESS", "CONVERTED", "ARCHIVED", "IGNORED"],
+    NEEDS_MANAGER_INPUT: ["READY_FOR_DECISION", "UNASSIGNED", "SETUP_IN_PROGRESS", "ARCHIVED", "IGNORED"],
+    READY_FOR_DECISION: ["CLAIMED", "SETUP_IN_PROGRESS", "CONVERTED", "ARCHIVED", "IGNORED"],
+    SETUP_IN_PROGRESS: ["READY_FOR_DECISION", "CONVERTED", "ARCHIVED", "IGNORED"],
     CONVERTED: [],
     IGNORED: [],
     ARCHIVED: [],

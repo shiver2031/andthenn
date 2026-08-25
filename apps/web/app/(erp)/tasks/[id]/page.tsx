@@ -62,8 +62,6 @@ export default async function TaskPage({
   if (
     !task ||
     (actor.role !== "MANAGER" &&
-      task.projectOwnerId !== actor.membershipId &&
-      !actor.visibleProjectIds.has(task.projectId) &&
       !actor.primaryTaskIds.has(id) &&
       !actor.collaboratorTaskIds.has(id))
   )
@@ -366,7 +364,7 @@ export default async function TaskPage({
         shares={shares}
         comments={commentRows}
         rights={rightRows}
-        canShare={actor.role === "MANAGER" || actor.reviewShareTaskIds.has(id)}
+        canShare={actor.role === "MANAGER" || actor.primaryTaskIds.has(id) || actor.collaboratorTaskIds.has(id)}
         canApprove={actor.role === "MANAGER" || actor.primaryTaskIds.has(id)}
         canManageRights={actor.role === "MANAGER"}
       />

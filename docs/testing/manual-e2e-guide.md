@@ -20,17 +20,16 @@ Use this checklist against a production build. Record **Pass**, **Fail**, or **B
 
 ## 3. Intake
 
-1. Open `/intake`; select each inbox item and confirm its source, content, attachments, owner, and structured fields update.
+1. Open `/intake?view=queue`; select each inbox item and confirm its source evidence, owner, and summary update.
 2. Claim an unowned item, confirm the owner changes to you, release it, and confirm it becomes unclaimed.
 3. Use **Manual intake**, create a request, reload the page, and confirm it persists.
-4. Change **All sources** and **Oldest first**; confirm the displayed collection and order change.
-5. Open the PDF and voice-note attachments and confirm the right asset is usable.
-6. Edit the structured fields and **Save draft**. Reload and confirm the edits persist.
-7. Run **Convert to project task** and **New proposal**; confirm each creates the correct linked record without duplicating the intake item.
+4. Select **Approve & set up**, complete the project, work/team, and confirmation steps, then confirm the resulting project appears exactly once.
+5. Open `/intake?view=setups`, resume an intake-backed and a manager-created setup, then close each and confirm its draft remains available.
+6. Open `/intake?view=history`; confirm approved setups link to the created project and rejected setups retain their reason.
 
-## 4. Proposals, projects, and tasks
+## 4. Projects and tasks
 
-1. On `/proposals`, create a proposal, edit its quote, reject it, approve it, and confirm activation creates exactly one project.
+1. Open `/proposals` and confirm it redirects to `/intake?view=setups`.
 2. On `/projects`, search for `Juniper`; confirm nonmatching projects disappear. Create a project and confirm it persists after reload.
 3. Open `/projects/aster` and `/projects/juniper`; confirm each URL shows its own project data.
 4. On a project, toggle **Board** and **List**, then test **Overview**, **Files**, **Commercial**, and **Timeline**.
