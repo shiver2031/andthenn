@@ -25,7 +25,10 @@ export function createDatabase(connectionString = process.env.DATABASE_URL) {
   if (!connectionString) throw new Error("DATABASE_URL is required");
   const existing = connections().get(connectionString);
   if (existing) return existing;
-  const client = postgres(connectionString, { prepare: false, max: 10 });
+  // A Vercel function may be replicated many times. One connection per
+  // instance keeps the review app within Supabase's pooler client limit while
+  // postgres.js queues concurrent queries within that instance.
+  const client = postgres(connectionString, { prepare: false, max: process.env.VERCEL ? 1 : 10 });
   const connection: DatabaseConnection = { db: drizzle(client, { schema }), client };
   connections().set(connectionString, connection);
   return connection;
