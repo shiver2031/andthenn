@@ -1,8 +1,13 @@
 import postgres from "postgres";
 
-const sourceUrl = process.env.SOURCE_DATABASE_URL;
-const targetUrl = process.env.TARGET_DATABASE_URL;
-if (!sourceUrl || !targetUrl) throw new Error("SOURCE_DATABASE_URL and TARGET_DATABASE_URL are required");
+function requiredEnvironmentVariable(name: "SOURCE_DATABASE_URL" | "TARGET_DATABASE_URL"): string {
+  const value = process.env[name];
+  if (!value) throw new Error("SOURCE_DATABASE_URL and TARGET_DATABASE_URL are required");
+  return value;
+}
+
+const sourceUrl = requiredEnvironmentVariable("SOURCE_DATABASE_URL");
+const targetUrl = requiredEnvironmentVariable("TARGET_DATABASE_URL");
 
 const quote = (identifier: string) => `"${identifier.replaceAll("\"", "\"\"")}"`;
 
@@ -37,11 +42,18 @@ async function main() {
 
     if (tables.length) await target.unsafe(`truncate table ${tables.map(quote).join(", ")} restart identity cascade`);
     for (const table of ordered) {
-      const rows = await source.unsafe(`select * from ${quote(table)}`) as Array<Record<string, unknown>>;
+      const rows = await source.unsafe(`select * from ${quote(table)}`) as Array<Record<string, postgres.ParameterOrJSON<never>>>;
       if (!rows.length) continue;
       const columns = Object.keys(rows[0]!);
       const statement = `insert into ${quote(table)} (${columns.map(quote).join(", ")}) values (${columns.map((_, index) => `$${index + 1}`).join(", ")})`;
-      for (const row of rows) await target.unsafe(statement, columns.map((column) => row[column]));
+      for (const row of rows) {
+        const values = columns.map((column) => {
+          const value = row[column];
+          if (value === undefined) throw new Error(`Missing value for ${table}.${column}`);
+          return value;
+        });
+        await target.unsafe(statement, values);
+      }
       console.log(`Copied ${rows.length} row${rows.length === 1 ? "" : "s"} from ${table}`);
     }
   } finally {
