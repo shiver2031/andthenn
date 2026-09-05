@@ -181,6 +181,8 @@ async function runAcceptance(browserProject?: string) {
 }
 
 async function runAcceptanceMatrix() {
+  const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const startedClean = !execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim();
   const browserProjects = ["chromium-375", "chromium-768", "chromium-1024", "chromium-1440", "webkit-375", "webkit-1440"];
   const reports = [];
   let failed = false;
@@ -193,7 +195,7 @@ async function runAcceptanceMatrix() {
   const stats = { expected: 0, unexpected: 0, skipped: 0, flaky: 0, duration: 0 };
   for (const report of reports) for (const key of Object.keys(stats) as (keyof typeof stats)[]) stats[key] += Number(report.stats?.[key] ?? 0);
   await mkdir(join(root, "test-results"), { recursive: true });
-  await writeFile(join(root, "test-results", "prototype-results.json"), JSON.stringify({ releaseCommit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(), cleanCheckout: !execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim(), config: reports[0]?.config, suites: reports.flatMap((report) => report.suites ?? []), errors: reports.flatMap((report) => report.errors ?? []), stats }, null, 2));
+  await writeFile(join(root, "test-results", "prototype-results.json"), JSON.stringify({ releaseCommit: sourceCommit, cleanCheckout: startedClean && sourceCommit === execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim() && !execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim(), config: reports[0]?.config, suites: reports.flatMap((report) => report.suites ?? []), errors: reports.flatMap((report) => report.errors ?? []), stats }, null, 2));
   console.warn(`Isolated browser matrix: ${stats.expected} passed, ${stats.unexpected} failed, ${stats.skipped} skipped.`);
   if (failed || reports.length !== browserProjects.length) throw new Error("Browser acceptance matrix failed; inspect per-browser artifacts.");
 }
