@@ -3,7 +3,7 @@ RUN corepack enable
 WORKDIR /workspace
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @andthenn/web build
+RUN pnpm --filter @andthenn/web... build
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production

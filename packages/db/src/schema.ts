@@ -27,7 +27,12 @@ const auditColumns = {
 };
 
 export const roleEnum = pgEnum("membership_role", [
+  "FOUNDER",
   "MANAGER",
+  "DESIGNER",
+  "CLIENT",
+  // Legacy values remain readable during the rolling role migration. New
+  // memberships are created with the four product roles above.
   "EMPLOYEE",
   "TEMP_FREELANCER",
 ]);
@@ -79,6 +84,13 @@ export const deliverableStatusEnum = pgEnum("deliverable_status", [
 export const taskStateKindEnum = pgEnum("task_state_kind", [
   "WORKFLOW",
   "CLIENT_FEEDBACK_RECEIVED",
+  "COMPLETED",
+]);
+export const taskExecutionStatusEnum = pgEnum("task_execution_status", [
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING",
+  "BLOCKED",
   "COMPLETED",
 ]);
 export const stageSemanticEnum = pgEnum("stage_semantic", [
@@ -382,6 +394,29 @@ export const contacts = pgTable("contacts", {
   lifecycle: lifecycleEnum("lifecycle").notNull().default("ACTIVE"),
   ...auditColumns,
 });
+
+/** Links an authenticated Client membership to the client record it may
+ * represent. Project-level visibility remains an explicit project membership
+ * grant, so a client account never inherits every organization project. */
+export const clientMemberships = pgTable(
+  "client_memberships",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id),
+    membershipId: uuid("membership_id")
+      .notNull()
+      .references(() => memberships.id),
+    ...auditColumns,
+  },
+  (table) => [
+    primaryKey({ columns: [table.clientId, table.membershipId] }),
+    index("client_membership_member_idx").on(table.membershipId),
+  ],
+);
 
 export const contactChannels = pgTable(
   "contact_channels",
@@ -803,6 +838,9 @@ export const tasks = pgTable(
       () => workflowStages.id,
     ),
     stateKind: taskStateKindEnum("state_kind").notNull().default("WORKFLOW"),
+    executionStatus: taskExecutionStatusEnum("execution_status")
+      .notNull()
+      .default("OPEN"),
     interruptedWorkflowStageId: uuid(
       "interrupted_workflow_stage_id",
     ).references(() => workflowStages.id),
@@ -811,6 +849,23 @@ export const tasks = pgTable(
     priority: varchar("priority", { length: 40 }).notNull().default("NORMAL"),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
     estimatedMinutes: integer("estimated_minutes"),
+    requiresClientDelivery: boolean("requires_client_delivery").notNull().default(false),
+    completionDelegateMembershipId: uuid("completion_delegate_membership_id").references(() => memberships.id),
+    completionRequestedAt: timestamp("completion_requested_at", {
+      withTimezone: true,
+    }),
+    completionRequestedByMembershipId: uuid(
+      "completion_requested_by_membership_id",
+    ).references(() => memberships.id),
+    completionReviewerMembershipId: uuid(
+      "completion_reviewer_membership_id",
+    ).references(() => memberships.id),
+    completionConfirmedAt: timestamp("completion_confirmed_at", {
+      withTimezone: true,
+    }),
+    completionConfirmedByMembershipId: uuid(
+      "completion_confirmed_by_membership_id",
+    ).references(() => memberships.id),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     version: integer("version").notNull().default(0),
     ...auditColumns,
@@ -819,7 +874,7 @@ export const tasks = pgTable(
     index("task_deliverable_due_idx").on(table.deliverableId, table.dueAt),
     index("task_state_idx").on(
       table.organizationId,
-      table.stateKind,
+      table.executionStatus,
       table.dueAt,
     ),
     check(
@@ -829,6 +884,14 @@ export const tasks = pgTable(
     check(
       "task_estimate_positive",
       sql`${table.estimatedMinutes} IS NULL OR ${table.estimatedMinutes} > 0`,
+    ),
+    check(
+      "task_completion_request_shape",
+      sql`num_nonnulls(${table.completionRequestedAt}, ${table.completionRequestedByMembershipId}, ${table.completionReviewerMembershipId}) IN (0, 3)`,
+    ),
+    check(
+      "task_completion_confirmation_shape",
+      sql`num_nonnulls(${table.completionConfirmedAt}, ${table.completionConfirmedByMembershipId}) IN (0, 2) AND (${table.completionConfirmedAt} IS NULL OR ${table.completionRequestedAt} IS NOT NULL)`,
     ),
   ],
 );
@@ -945,6 +1008,8 @@ export const internalComments = pgTable(
     authorMembershipId: uuid("author_membership_id")
       .notNull()
       .references(() => memberships.id),
+    fileVersionId: uuid("file_version_id"),
+    requestId: uuid("request_id"),
     body: text("body").notNull(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -955,6 +1020,31 @@ export const internalComments = pgTable(
     check(
       "internal_comment_parent_scope",
       sql`num_nonnulls(${table.projectId}, ${table.taskId}) = 1`,
+    ),
+  ],
+);
+
+export const internalCommentMentions = pgTable(
+  "internal_comment_mentions",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => internalComments.id, { onDelete: "cascade" }),
+    mentionedMembershipId: uuid("mentioned_membership_id")
+      .notNull()
+      .references(() => memberships.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.commentId, table.mentionedMembershipId] }),
+    index("internal_comment_mention_member_idx").on(
+      table.mentionedMembershipId,
+      table.createdAt,
     ),
   ],
 );
@@ -1102,6 +1192,30 @@ export const fileVersions = pgTable(
   ],
 );
 
+/** The single internal-review version selected for a task. Review shares stay
+ * immutable and version-pinned; changing this row affects future shares only. */
+export const taskReviewSelections = pgTable(
+  "task_review_selections",
+  {
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    taskId: uuid("task_id")
+      .primaryKey()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    fileVersionId: uuid("file_version_id")
+      .notNull()
+      .references(() => fileVersions.id),
+    selectedByMembershipId: uuid("selected_by_membership_id")
+      .notNull()
+      .references(() => memberships.id),
+    selectedAt: timestamp("selected_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("task_review_selection_version_idx").on(table.fileVersionId)],
+);
+
 export const uploadSessions = pgTable(
   "upload_sessions",
   {
@@ -1157,6 +1271,10 @@ export const fileApprovals = pgTable(
     approvedByMembershipId: uuid("approved_by_membership_id")
       .notNull()
       .references(() => memberships.id),
+    approvalKind: text("approval_kind").notNull().default("LEGACY_UNVERIFIED"),
+    approvalSource: text("approval_source").notNull().default("LEGACY"),
+    clientApprover: text("client_approver"),
+    evidenceReference: text("evidence_reference"),
     note: text("note"),
     approvedAt: timestamp("approved_at", { withTimezone: true })
       .notNull()
@@ -1169,10 +1287,23 @@ export const fileApprovals = pgTable(
   },
   (table) => [
     uniqueIndex("active_task_approval_unique")
-      .on(table.taskId)
+      .on(table.taskId, table.approvalKind)
       .where(sql`${table.reopenedAt} IS NULL`),
   ],
 );
+
+export const finalDeliveries = pgTable("final_deliveries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+  taskId: uuid("task_id").notNull().references(() => tasks.id),
+  fileVersionId: uuid("file_version_id").notNull().references(() => fileVersions.id),
+  clientApprovalId: uuid("client_approval_id").notNull().references(() => fileApprovals.id),
+  publishedByMembershipId: uuid("published_by_membership_id").notNull().references(() => memberships.id),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
+  withdrawnByMembershipId: uuid("withdrawn_by_membership_id").references(() => memberships.id),
+  withdrawalReason: text("withdrawal_reason"),
+}, (table) => [uniqueIndex("active_task_delivery_unique").on(table.taskId).where(sql`${table.withdrawnAt} IS NULL`)]);
 
 export const reviewHubs = pgTable(
   "review_hubs",
@@ -1619,6 +1750,37 @@ export const invoiceRevisions = pgTable(
   },
   (table) => [
     index("invoice_revision_idx").on(table.invoiceRecordId, table.createdAt),
+  ],
+);
+
+/** Lightweight operational expenses only; this intentionally is not a
+ * general ledger. */
+export const projectExpenses = pgTable(
+  "project_expenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("INR"),
+    category: varchar("category", { length: 120 }).notNull(),
+    incurredOn: date("incurred_on").notNull(),
+    note: text("note"),
+    createdByMembershipId: uuid("created_by_membership_id")
+      .notNull()
+      .references(() => memberships.id),
+    ...auditColumns,
+  },
+  (table) => [
+    index("project_expense_project_date_idx").on(
+      table.projectId,
+      table.incurredOn,
+    ),
+    check("project_expense_positive", sql`${table.amountMinor} > 0`),
   ],
 );
 

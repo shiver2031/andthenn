@@ -35,7 +35,7 @@ import {
   reviewHubs,
   reviewShares,
 } from "@andthenn/db";
-import { calculateQuote, calculateQuoteLine } from "@andthenn/domain";
+import { authorize, calculateQuote, calculateQuoteLine } from "@andthenn/domain";
 import { createHash, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import {
@@ -67,11 +67,11 @@ const integer = (
   return value;
 };
 
-async function managerOrThrow() {
+async function managerOrThrow(finance = true) {
   if (demoModeEnabled()) throw new Error("Demo mode is read-only");
   const actor = await resolveActorContext();
   if (!actor) throw new Error("Authentication required");
-  if (actor.role !== "MANAGER") throw new Error("Manager permission required");
+  authorize(actor, finance ? "finances:view" : "company:view", { explicitlyGranted: true });
   return actor;
 }
 
@@ -110,7 +110,7 @@ async function audit(
 }
 
 async function scopedProject(
-  db: ReturnType<typeof createDatabase>["db"],
+  db: Pick<ReturnType<typeof createDatabase>["db"], "select">,
   actor: ActorContext,
   projectId: string,
 ) {
@@ -787,10 +787,11 @@ export async function saveInvoice(form: FormData) {
 }
 
 export async function confirmDeliverable(form: FormData) {
-  const actor = await managerOrThrow(),
+  const actor = await managerOrThrow(false),
     deliverableId = required(form, "deliverableId"),
     { db } = createDatabase();
   await db.transaction(async (tx) => {
+    await tx.execute(sql`select p.id from projects p join deliverables d on d.project_id = p.id where d.id = ${deliverableId}::uuid and p.organization_id = ${actor.organizationId}::uuid for update of p`);
     const [delivery] = await tx
       .select()
       .from(deliverables)
@@ -809,7 +810,7 @@ export async function confirmDeliverable(form: FormData) {
       .where(
         and(
           eq(tasks.deliverableId, deliverableId),
-          sql`${tasks.stateKind} <> 'COMPLETED'`,
+          sql`${tasks.executionStatus} <> 'COMPLETED'`,
         ),
       )
       .limit(1);
@@ -823,7 +824,7 @@ export async function confirmDeliverable(form: FormData) {
         confirmedByMembershipId: actor.membershipId,
         updatedAt: new Date(),
       })
-      .where(eq(deliverables.id, deliverableId));
+      .where(and(eq(deliverables.id, deliverableId), eq(deliverables.status, "READY_FOR_MANAGER_CONFIRMATION")));
     const incomplete = await tx
       .select({ id: deliverables.id })
       .from(deliverables)
@@ -858,7 +859,7 @@ export async function confirmDeliverable(form: FormData) {
 }
 
 export async function reopenDeliverable(form: FormData) {
-  const actor = await managerOrThrow(),
+  const actor = await managerOrThrow(false),
     deliverableId = required(form, "deliverableId"),
     reason = required(form, "reason");
   if (reason.length < 3)
@@ -911,7 +912,7 @@ export async function reopenDeliverable(form: FormData) {
 }
 
 export async function seedClosureChecklist(form: FormData) {
-  const actor = await managerOrThrow(),
+  const actor = await managerOrThrow(false),
     projectId = required(form, "projectId"),
     { db } = createDatabase();
   const project = await scopedProject(db, actor, projectId);
@@ -938,10 +939,16 @@ export async function seedClosureChecklist(form: FormData) {
 }
 
 export async function toggleClosureChecklistItem(form: FormData) {
-  const actor = await managerOrThrow(),
+  const actor = await managerOrThrow(false),
     itemId = required(form, "itemId"),
     { db } = createDatabase();
-  const [item] = await db
+  await db.transaction(async (tx) => {
+  const [target] = await tx.select({ projectId: projectClosureChecklistItems.projectId }).from(projectClosureChecklistItems).where(and(eq(projectClosureChecklistItems.id, itemId), eq(projectClosureChecklistItems.organizationId, actor.organizationId))).limit(1);
+  if (!target) throw new Error("Closure item not found");
+  await tx.execute(sql`select id from projects where id = ${target.projectId} and organization_id = ${actor.organizationId} for update`);
+  const project = await scopedProject(tx, actor, target.projectId);
+  if (project.status !== "READY_FOR_FINAL_CLOSURE") throw new Error("Project is no longer ready for checklist changes. Refresh before continuing.");
+  const [item] = await tx
     .select()
     .from(projectClosureChecklistItems)
     .where(
@@ -953,7 +960,7 @@ export async function toggleClosureChecklistItem(form: FormData) {
     .limit(1);
   if (!item) throw new Error("Closure item not found");
   const completedAt = item.completedAt ? null : new Date();
-  await db
+  await tx
     .update(projectClosureChecklistItems)
     .set({
       completedAt,
@@ -962,11 +969,12 @@ export async function toggleClosureChecklistItem(form: FormData) {
       updatedAt: new Date(),
     })
     .where(eq(projectClosureChecklistItems.id, item.id));
+  });
   revalidatePath("/commercial");
 }
 
 export async function queueProjectArchive(form: FormData) {
-  const actor = await managerOrThrow(),
+  const actor = await managerOrThrow(false),
     projectId = required(form, "projectId"),
     { db } = createDatabase();
   const project = await scopedProject(db, actor, projectId);
@@ -1021,84 +1029,35 @@ export async function queueProjectArchive(form: FormData) {
 }
 
 export async function closeProject(form: FormData) {
-  const actor = await managerOrThrow(),
-    projectId = required(form, "projectId"),
-    { db } = createDatabase();
-  const project = await scopedProject(db, actor, projectId);
-  if (project.status !== "READY_FOR_FINAL_CLOSURE")
-    throw new Error("Project is not ready for final closure");
-  const [missing] = await db
-    .select({ id: projectClosureChecklistItems.id })
-    .from(projectClosureChecklistItems)
-    .where(
-      and(
-        eq(projectClosureChecklistItems.projectId, projectId),
-        eq(projectClosureChecklistItems.required, true),
-        isNull(projectClosureChecklistItems.completedAt),
-      ),
-    )
-    .limit(1);
-  const checklist = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(projectClosureChecklistItems)
-    .where(
-      and(
-        eq(projectClosureChecklistItems.projectId, projectId),
-        eq(projectClosureChecklistItems.required, true),
-      ),
-    );
-  if (!checklist[0]?.count || missing)
-    throw new Error("Complete every required closure checklist item");
-  const [archive] = await db
-    .select()
-    .from(archiveJobs)
-    .where(
-      and(
-        eq(archiveJobs.projectId, projectId),
-        eq(archiveJobs.organizationId, actor.organizationId),
-      ),
-    )
-    .orderBy(sql`${archiveJobs.createdAt} desc`)
-    .limit(1);
-  if (!archive || archive.status !== "SUCCEEDED")
-    throw new Error("A checksum-verified archive must succeed before closure");
+  const actor = await managerOrThrow(false), projectId = required(form, "projectId"), { db } = createDatabase();
   await db.transaction(async (tx) => {
-    await tx
-      .update(projects)
-      .set({
-        status: "COMPLETED",
-        completedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(projects.id, projectId),
-          eq(projects.status, "READY_FOR_FINAL_CLOSURE"),
-        ),
-      );
-    await tx.insert(projectClosureEvents).values({
-      organizationId: actor.organizationId,
-      projectId,
-      actorMembershipId: actor.membershipId,
-      action: "CLOSED",
-      snapshot: { archiveJobId: archive.id },
-    });
-    await audit(
-      tx as never,
-      actor,
-      "project.closed",
-      "PROJECT",
-      projectId,
-      { status: project.status },
-      { status: "COMPLETED", archiveJobId: archive.id },
-    );
+    const [project] = await tx.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.organizationId, actor.organizationId))).limit(1).for("update");
+    if (!project || project.status !== "READY_FOR_FINAL_CLOSURE") throw new Error("Project is not ready for final closure");
+    const outputs = await tx.select({ status: deliverables.status }).from(deliverables).where(eq(deliverables.projectId, projectId));
+    const open = await tx.select({ id: tasks.id }).from(tasks).innerJoin(deliverables, eq(deliverables.id, tasks.deliverableId)).where(and(eq(deliverables.projectId, projectId), sql`${tasks.executionStatus} <> 'COMPLETED'`)).limit(1);
+    if (!outputs.length || outputs.some((item) => item.status !== "COMPLETED") || open.length) throw new Error("All tasks and outputs must remain complete before closure");
+    const checklist = await tx.select().from(projectClosureChecklistItems).where(and(eq(projectClosureChecklistItems.projectId, projectId), eq(projectClosureChecklistItems.required, true)));
+    if (!checklist.length || checklist.some((item) => !item.completedAt)) throw new Error("Complete every required closure checklist item");
+    const [archive] = await tx.select().from(archiveJobs).where(and(eq(archiveJobs.projectId, projectId), eq(archiveJobs.organizationId, actor.organizationId))).orderBy(sql`${archiveJobs.createdAt} desc`).limit(1);
+    if (!archive || archive.status !== "SUCCEEDED" || (project.reopenedAt && archive.createdAt < project.reopenedAt)) throw new Error("A current checksum-verified archive must succeed before closure");
+    const [coverage] = await tx.execute<{ valid: boolean }>(sql`select not exists (
+      select 1 from current_final_files f join tasks t on t.id = f.task_id join deliverables d on d.id = t.deliverable_id join file_versions v on v.id = f.file_version_id
+      where d.project_id = ${projectId}::uuid and not exists (
+        select 1 from archive_manifest_entries m where m.archive_job_id = ${archive.id}::uuid and m.file_version_id = f.file_version_id and m.status = 'VERIFIED' and m.verified_checksum_sha256 = v.checksum_sha256 and m.expected_checksum_sha256 = v.checksum_sha256
+      )) and not exists (
+        select 1 from archive_manifest_entries m where m.archive_job_id = ${archive.id}::uuid and not exists (select 1 from current_final_files f join tasks t on t.id=f.task_id join deliverables d on d.id=t.deliverable_id where f.file_version_id=m.file_version_id and d.project_id=${projectId}::uuid)
+      ) as valid`);
+    if (!coverage?.valid) throw new Error("Archive manifest does not cover the current final deliveries. Create a fresh verified archive.");
+    const [changed] = await tx.update(projects).set({ status: "COMPLETED", completedAt: new Date(), updatedAt: new Date() }).where(and(eq(projects.id, projectId), eq(projects.status, "READY_FOR_FINAL_CLOSURE"))).returning({ id: projects.id });
+    if (!changed) throw new Error("Project changed; reload before closing");
+    await tx.insert(projectClosureEvents).values({ organizationId: actor.organizationId, projectId, actorMembershipId: actor.membershipId, action: "CLOSED", snapshot: { archiveJobId: archive.id } });
+    await audit(tx as never, actor, "project.closed", "PROJECT", projectId, { status: project.status }, { status: "COMPLETED", archiveJobId: archive.id });
   });
-  revalidatePath("/commercial");
-  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/commercial"); revalidatePath(`/projects/${projectId}`);
 }
 
 export async function reopenProject(form: FormData) {
-  const actor = await managerOrThrow(),
+  const actor = await managerOrThrow(false),
     projectId = required(form, "projectId"),
     reason = required(form, "reason");
   if (reason.length < 3)

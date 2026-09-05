@@ -1,0 +1,1 @@
+export default function Loading() { return <div role="status" className="animate-pulse space-y-4" aria-label="Loading workspace"><div className="h-9 w-64 rounded-xl bg-zinc-200"/><div className="h-24 rounded-2xl bg-zinc-100"/><div className="h-64 rounded-2xl bg-zinc-100"/></div>; }

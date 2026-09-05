@@ -11,16 +11,17 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState, useTransition } from "react";
+import { DeliveryActions } from "./delivery-actions";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
-  approveFileVersion,
   createAssetRight,
   createReviewShare,
   reopenFileApproval,
   resolveReviewComment,
   revokeReviewShare,
 } from "../app/(erp)/tasks/review-actions";
+import { selectTaskReviewVersion } from "../app/(erp)/actions";
 
 type Version = {
   id: string;
@@ -62,6 +63,7 @@ export function TaskReviewHub({
   taskId,
   taskVersion,
   activeApproval,
+  selectedReviewVersionId,
   assets,
   shares,
   comments,
@@ -73,6 +75,7 @@ export function TaskReviewHub({
   taskId: string;
   taskVersion: number;
   activeApproval: { id: string; fileVersionId: string } | null;
+  selectedReviewVersionId: string | null;
   assets: Asset[];
   shares: Share[];
   comments: Comment[];
@@ -212,6 +215,25 @@ export function TaskReviewHub({
     });
   }
 
+  function selectReviewVersion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setMessage("");
+    startTransition(async () => {
+      try {
+        await selectTaskReviewVersion(new FormData(form));
+        setMessage("Internal review version selected.");
+        router.refresh();
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to select the review version",
+        );
+      }
+    });
+  }
+
   return (
     <section className="surface mt-5 rounded-2xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -231,6 +253,46 @@ export function TaskReviewHub({
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <div className="space-y-4">
+          {canShare && readyVersions.length > 0 && (
+            <form
+              onSubmit={selectReviewVersion}
+              className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4"
+            >
+              <h3 className="text-sm font-bold">Internal review candidate</h3>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Choose the exact ready version that may enter Internal review.
+              </p>
+              <input type="hidden" name="taskId" value={taskId} />
+              <input
+                type="hidden"
+                name="expectedVersion"
+                value={taskVersion}
+              />
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <select
+                  name="fileVersionId"
+                  required
+                  defaultValue={selectedReviewVersionId ?? ""}
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 text-sm"
+                >
+                  <option value="">Choose ready version</option>
+                  {readyVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      V{version.versionNumber} · {version.filename}
+                    </option>
+                  ))}
+                </select>
+                <Button type="submit" disabled={pending}>
+                  {pending ? "Selecting…" : "Select version"}
+                </Button>
+              </div>
+              {selectedReviewVersionId && (
+                <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 size={14} /> A review version is selected
+                </p>
+              )}
+            </form>
+          )}
           <form
             onSubmit={upload}
             className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/40 p-4"
@@ -305,27 +367,8 @@ export function TaskReviewHub({
                     {version.lockedAt && (
                       <ShieldCheck size={16} className="text-emerald-600" />
                     )}
-                    {canApprove &&
-                      version.processingStatus === "READY" &&
-                      !version.lockedAt &&
-                      !activeApproval && (
-                        <form action={approveFileVersion}>
-                          <input type="hidden" name="taskId" value={taskId} />
-                          <input
-                            type="hidden"
-                            name="fileVersionId"
-                            value={version.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="expectedTaskVersion"
-                            value={taskVersion}
-                          />
-                          <Button type="submit" size="sm">
-                            Approve
-                          </Button>
-                        </form>
-                      )}
+                    {canApprove && version.processingStatus === "READY" && selectedReviewVersionId === version.id && <DeliveryActions taskId={taskId} fileVersionId={version.id} taskVersion={taskVersion}/>}
+
                   </div>
                 ))}
               </div>
@@ -337,6 +380,7 @@ export function TaskReviewHub({
               className="rounded-2xl border border-amber-200 bg-amber-50 p-4"
             >
               <input type="hidden" name="taskId" value={taskId} />
+              <input type="hidden" name="expectedVersion" value={taskVersion} />
               <p className="text-xs font-bold text-amber-900">
                 Approved version locked
               </p>
@@ -465,7 +509,7 @@ export function TaskReviewHub({
                   </div>
                   <p className="mt-2 text-zinc-400">
                     {share.firstViewedAt
-                      ? `First viewed ${new Date(share.firstViewedAt).toLocaleString()} · Last ${new Date(share.lastViewedAt!).toLocaleString()}`
+                      ? `First viewed ${new Date(share.firstViewedAt).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" })} · Last ${new Date(share.lastViewedAt!).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" })}`
                       : "Not viewed yet"}
                   </p>
                 </div>
@@ -506,7 +550,7 @@ export function TaskReviewHub({
                   <input type="hidden" name="commentId" value={comment.id} />
                   <p className="text-xs font-bold">
                     {comment.reviewerName ?? "Reviewer"} ·{" "}
-                    {new Date(comment.createdAt).toLocaleDateString()}
+                    {new Date(comment.createdAt).toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}
                   </p>
                   <p className="mt-1 text-sm text-zinc-600">{comment.body}</p>
                   <Button

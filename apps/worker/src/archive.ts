@@ -51,17 +51,18 @@ export async function runArchiveJob(
       }[]
     >`
       select distinct v.id::text, v.filename, v.storage_key, v.checksum_sha256
-      from file_approvals a
+      from current_final_files f
+      join file_approvals a on a.file_version_id = f.file_version_id and a.task_id = f.task_id and a.approval_kind = 'CLIENT' and a.reopened_at is null
       join file_versions v on v.id = a.file_version_id and v.organization_id = a.organization_id
       join tasks t on t.id = a.task_id and t.organization_id = a.organization_id
       join deliverables d on d.id = t.deliverable_id and d.organization_id = a.organization_id
       where d.project_id = ${job.project_id}::uuid and a.organization_id = ${job.organization_id}::uuid
         and a.reopened_at is null and v.locked_at is not null and v.processing_status = 'READY'
-      order by v.id`;
-    if (!versions.length)
-      throw new Error(
-        "Project has no active approved file versions to archive",
-      );
+      order by v.id::text`;
+    if (!versions.length) {
+      const [assets] = await sql<{ count: number }[]>`select count(*)::int count from file_assets a join tasks t on t.id=a.task_id join deliverables d on d.id=t.deliverable_id where d.project_id=${job.project_id}::uuid`;
+      if (assets?.count) throw new Error("Project media must have current final deliveries before archival.");
+    }
     for (const version of versions) {
       const destinationKey = archiveDestinationKey(
         job.destination_prefix,

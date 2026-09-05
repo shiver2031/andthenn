@@ -6,10 +6,46 @@ import type {
   IntakeStatus,
   ProjectSnapshot,
   ReviewShareSnapshot,
+  TaskExecutionStatus,
   TaskSnapshot,
   TaskState,
   WorkflowStage,
 } from "./model";
+
+const executionTransitions: Record<TaskExecutionStatus, readonly TaskExecutionStatus[]> = {
+  OPEN: ["IN_PROGRESS", "WAITING", "BLOCKED"],
+  IN_PROGRESS: ["OPEN", "WAITING", "BLOCKED"],
+  WAITING: ["OPEN", "IN_PROGRESS", "BLOCKED"],
+  BLOCKED: ["OPEN", "IN_PROGRESS", "WAITING"],
+  COMPLETED: [],
+};
+
+export function assertTaskExecutionTransition(
+  from: TaskExecutionStatus,
+  to: TaskExecutionStatus,
+  actor: { isPrimaryOwner: boolean; canOverride: boolean; overrideReason?: string },
+): void {
+  invariant(to !== "COMPLETED", "COMPLETION_CONFIRMATION_REQUIRED", "Completed work must be confirmed from a completion request");
+  invariant(from !== "COMPLETED", "REOPEN_COMMAND_REQUIRED", "Completed work must be reopened with the dedicated command");
+  invariant(executionTransitions[from].includes(to), "INVALID_TASK_STATUS_TRANSITION", `Cannot move task from ${from} to ${to}`);
+  invariant(actor.isPrimaryOwner || actor.canOverride, "PRIMARY_OWNER_ONLY", "Only the primary owner changes normal task status");
+  if (!actor.isPrimaryOwner && actor.canOverride) {
+    invariant(Boolean(actor.overrideReason?.trim()), "OVERRIDE_REASON_REQUIRED", "Founder or Manager overrides require an audit reason");
+  }
+}
+
+export function projectHealth(
+  taskRows: readonly { executionStatus: TaskExecutionStatus; dueAt: Date; waitingOnResponse?: boolean }[],
+  projectDeadline: Date,
+  now = new Date(),
+): "ON_TRACK" | "AT_RISK" | "BLOCKED" | "WAITING" {
+  const open = taskRows.filter((task) => task.executionStatus !== "COMPLETED");
+  if (open.some((task) => task.executionStatus === "BLOCKED")) return "BLOCKED";
+  if (open.some((task) => task.executionStatus === "WAITING" || task.waitingOnResponse)) return "WAITING";
+  const soon = projectDeadline.getTime() - now.getTime() <= 3 * 86_400_000;
+  if (open.some((task) => task.dueAt < now) || (soon && open.length > 0)) return "AT_RISK";
+  return "ON_TRACK";
+}
 
 const terminalIntakeStatuses = new Set<IntakeStatus>(["CONVERTED", "IGNORED", "ARCHIVED"]);
 
@@ -109,7 +145,9 @@ export function feedbackState(current: TaskState): TaskState {
 export function approvedState(task: TaskSnapshot, version: FileVersionSnapshot): TaskState {
   invariant(version.taskId === task.id, "VERSION_TASK_MISMATCH", "Approved version must belong to the task");
   invariant(version.lockedAt === null, "VERSION_ALREADY_LOCKED", "File version is already locked");
-  return { kind: "SYSTEM", state: "COMPLETED", interruptedStageId: null };
+  // File approval preserves workflow state. Only the completion confirmation
+  // command may make execution terminal.
+  return task.state;
 }
 
 export function nextDeliverableStatus(deliverable: DeliverableSnapshot): DeliverableSnapshot["status"] {

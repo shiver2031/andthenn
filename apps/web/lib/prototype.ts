@@ -6,10 +6,15 @@ export const PROTOTYPE_SESSION_COOKIE = "andthenn_prototype_session";
 export const REVIEW_PERSONA_COOKIE = "andthenn_review_persona";
 
 export const prototypePersonas = {
-  manager: { authUserId: "10000000-0000-4000-8000-000000000001", label: "Manager · Mira Shah" },
-  employee: { authUserId: "10000000-0000-4000-8000-000000000002", label: "Employee · Arjun Menon" },
-  temporary: { authUserId: "10000000-0000-4000-8000-000000000004", label: "Temporary · Kabir Rao" },
+  founder: { authUserId: "10000000-0000-4000-8000-000000000001", label: "Founder · Mira Shah" },
+  manager: { authUserId: "10000000-0000-4000-8000-000000000006", label: "Manager · Rohan Bose" },
+  designer: { authUserId: "10000000-0000-4000-8000-000000000002", label: "Designer · Arjun Menon" },
+  // Backward-compatible automation alias; the visible product role is Designer.
+  employee: { authUserId: "10000000-0000-4000-8000-000000000002", label: "Designer · Arjun Menon" },
+  temporary: { authUserId: "10000000-0000-4000-8000-000000000004", label: "Temporary Designer · Kabir Rao" },
   expired: { authUserId: "10000000-0000-4000-8000-000000000005", label: "Expired temporary · Nikhil Das" },
+  clientAster: { authUserId: "10000000-0000-4000-8000-000000000007", label: "Client · Riya at Aster" },
+  clientJuniper: { authUserId: "10000000-0000-4000-8000-000000000008", label: "Client · Dev at Juniper" },
 } as const;
 
 export type PrototypePersona = keyof typeof prototypePersonas;

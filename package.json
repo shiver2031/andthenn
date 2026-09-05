@@ -20,6 +20,7 @@
     "prototype:reset": "tsx packages/db/src/prototype.ts reset",
     "acceptance:prototype": "tsx packages/db/src/prototype.ts acceptance",
     "acceptance:repeat": "tsx packages/db/src/prototype.ts repeat",
+    "release:gate": "node scripts/release-gate.mjs",
     "db:generate": "pnpm --filter @andthenn/db db:generate",
     "db:migrate": "pnpm --filter @andthenn/db db:migrate",
     "db:seed": "pnpm --filter @andthenn/db db:seed"

@@ -1,0 +1,6 @@
+import Link from "next/link";
+import { Badge } from "@andthenn/ui";
+import type { WorkSummaryRow } from "../lib/work-summary";
+export function WorkSummaryList({ rows, timezone }: { rows: WorkSummaryRow[]; timezone: string }) {
+  return <div className="divide-y divide-zinc-100">{rows.map((row) => <Link key={row.id} href={`/tasks/${row.id}`} className="block p-4 hover:bg-violet-50/40"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{row.name}</strong><Badge tone={row.status === "COMPLETED" ? "green" : row.status === "BLOCKED" ? "rose" : "violet"}>{row.status.replaceAll("_", " ")}</Badge></div><p className="mt-2 text-xs text-zinc-600">{row.client} · {row.project} · {row.priority} priority</p><p className="mt-1 text-xs text-zinc-600">Owner {row.owner} · Assigned by {row.assignedBy}{row.assignedAt ? ` on ${row.assignedAt.toLocaleDateString("en-GB", { timeZone: timezone })}` : ""}</p><p className="mt-1 text-xs text-zinc-600">Due {row.dueAt.toLocaleDateString("en-GB", { timeZone: timezone })} · Phase: {row.stage ?? "—"}</p>{row.description && <p className="mt-2 line-clamp-2 text-sm text-zinc-600">{row.description}</p>}</Link>)}{!rows.length && <p className="p-5 text-sm text-zinc-600">Nothing in this queue.</p>}</div>;
+}

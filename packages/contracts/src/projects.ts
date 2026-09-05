@@ -18,6 +18,7 @@ export const projectSetupTaskSchema = z.object({
   description: z.string().max(10_000).default(""),
   priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]).default("NORMAL"),
   dueAt: isoDateSchema,
+  requiresClientDelivery: z.boolean().default(false),
   estimatedMinutes: z.number().int().positive().nullable().default(null),
   primaryOwnerId: idSchema,
   collaboratorIds: z.array(idSchema).default([]),
@@ -48,7 +49,13 @@ export const projectSetupDraftSchema = z.object({
 export const projectSetupSaveSchema = z.object({
   proposalId: idSchema,
   expectedVersion: z.number().int().nonnegative(),
-  draft: projectSetupDraftSchema,
+  // Saving an unfinished setup must not require a final client selection.
+  // Activation still parses projectSetupDraftSchema strictly.
+  draft: projectSetupDraftSchema.extend({
+    title: z.string().max(300), clientId: z.union([idSchema, z.literal("")]), ownerMembershipId: z.union([idSchema, z.literal("")]), deadline: z.string().max(100),
+    deliverables: z.array(projectSetupDeliverableSchema.extend({ name: z.string().max(300), format: z.string().max(120), dueAt: z.string().max(100) })),
+    tasks: z.array(z.object({ id: idSchema, deliverableId: z.union([idSchema, z.literal("")]), name: z.string().max(300), description: z.string().max(10000), priority: z.enum(["LOW", "NORMAL", "HIGH", "URGENT"]), dueAt: z.string().max(100), estimatedMinutes: z.number().int().nonnegative().nullable(), requiresClientDelivery: z.boolean().default(false), primaryOwnerId: z.union([idSchema, z.literal("")]), collaboratorIds: z.array(idSchema) })),
+  }),
 });
 
 export const projectSetupFinalizeSchema = z.object({
@@ -64,6 +71,7 @@ const taskDraftSchema = z.object({
   primaryOwnerId: idSchema,
   collaboratorIds: z.array(idSchema).default([]),
   dueAt: isoDateSchema,
+  requiresClientDelivery: z.boolean().default(false),
   estimatedMinutes: z.number().int().positive().nullable().default(null),
 });
 

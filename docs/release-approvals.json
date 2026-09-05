@@ -1,0 +1,19 @@
+{
+  "releaseCommit": null,
+  "approvals": {
+    "production-role-mapping": { "status": "pending" },
+    "client-access-grants": { "status": "pending" },
+    "manager-finance-grants": { "status": "pending" },
+    "finance-definitions": { "status": "pending" },
+    "standalone-task-scope": { "status": "pending" },
+    "retention-privacy": { "status": "pending" },
+    "platform-ownership": { "status": "pending" },
+    "provider-sandboxes": { "status": "pending" },
+    "backup-recovery": { "status": "pending" },
+    "performance-accessibility": { "status": "pending" },
+    "uat-founder": { "status": "pending" },
+    "uat-manager": { "status": "pending" },
+    "uat-designer": { "status": "pending" },
+    "uat-client": { "status": "pending" }
+  }
+}

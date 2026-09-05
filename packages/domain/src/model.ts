@@ -1,8 +1,21 @@
-export const roles = ["MANAGER", "EMPLOYEE", "TEMP_FREELANCER"] as const;
+export const roles = ["FOUNDER", "MANAGER", "DESIGNER", "CLIENT"] as const;
 export type Role = (typeof roles)[number];
 
+export function isInternalRole(role: Role): role is Exclude<Role, "CLIENT"> {
+  return role !== "CLIENT";
+}
+
+export function isOperationalLeader(role: Role): role is "FOUNDER" | "MANAGER" {
+  return role === "FOUNDER" || role === "MANAGER";
+}
+
 export const capabilities = [
+  "clients:manage",
   "accounts:manage",
+  "company:view",
+  "team:view",
+  "files:view",
+  "client:portal",
   "intake:process",
   "proposals:decide",
   "projects:activate",
@@ -10,6 +23,8 @@ export const capabilities = [
   "workflows:configure",
   "finances:view",
   "tasks:create",
+  "tasks:assign",
+  "tasks:confirm",
   "tasks:status",
   "tasks:contribute",
   "time:log",
@@ -36,8 +51,21 @@ export interface MembershipContext {
   visibleProjectIds: ReadonlySet<string>;
   primaryTaskIds: ReadonlySet<string>;
   collaboratorTaskIds: ReadonlySet<string>;
+  assignedByMeTaskIds: ReadonlySet<string>;
   reviewShareTaskIds: ReadonlySet<string>;
+  linkedClientIds: ReadonlySet<string>;
 }
+
+export const taskExecutionStatuses = [
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING",
+  "BLOCKED",
+  "COMPLETED",
+] as const;
+export type TaskExecutionStatus = (typeof taskExecutionStatuses)[number];
+
+export type ProjectHealth = "ON_TRACK" | "AT_RISK" | "BLOCKED" | "WAITING";
 
 export type IntakeStatus =
   | "UNASSIGNED"
@@ -162,3 +190,5 @@ export interface WorkloadInput {
   collaboratorEstimatedMinutes: number;
   missingEstimateCount: number;
 }
+/** Workflow phases are never terminal execution statuses. */
+export const defaultProjectPhases = ["Work", "Internal review", "Client review", "Changes", "Approval", "Final delivery"] as const;

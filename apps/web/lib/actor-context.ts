@@ -1,4 +1,4 @@
-import { and, createDatabase, deliverables, eq, inArray, isNull, memberships, profiles, projectMemberships, taskAssignees, tasks } from "@andthenn/db";
+import { and, clientMemberships, createDatabase, deliverables, eq, inArray, isNull, memberships, profiles, projectMemberships, sql, taskAssignees, tasks } from "@andthenn/db";
 import type { AccountType, MembershipContext, Role } from "@andthenn/domain";
 import { isMembershipActive } from "@andthenn/domain";
 import { assertRuntimeConfiguration, prototypeRuntimeEnabled, reviewRuntimeEnabled } from "./config";
@@ -62,21 +62,30 @@ async function resolveDatabaseActor(userId: string, issuedAt: Date | null): Prom
   const visibleProjectIds = new Set<string>();
   const primaryTaskIds = new Set<string>();
   const collaboratorTaskIds = new Set<string>();
+  const assignedByMeTaskIds = new Set<string>();
   const reviewShareTaskIds = new Set<string>();
+  const role: Role = member.role === "EMPLOYEE" || member.role === "TEMP_FREELANCER"
+    ? "DESIGNER"
+    : member.role as Role;
+  const linkedClientIds = new Set<string>();
   const context: ActorContext = {
     membershipId: member.id, userId, organizationId: member.organizationId,
-    role: member.role as Role, accountType: member.accountType as AccountType,
+    role, accountType: member.accountType as AccountType,
     status: member.status, expiresAt: member.expiresAt, financeAccess: member.financeAccess,
     email: member.email, displayName: member.displayName, sessionIssuedAt: issuedAt,
-    visibleProjectIds, primaryTaskIds, collaboratorTaskIds, reviewShareTaskIds,
+    visibleProjectIds, primaryTaskIds, collaboratorTaskIds, assignedByMeTaskIds, reviewShareTaskIds, linkedClientIds,
   };
   if (!isMembershipActive(context) || (member.startsAt && member.startsAt > new Date()) || (member.sessionRevokedAfter && (!issuedAt || issuedAt <= member.sessionRevokedAfter))) return null;
 
-  const [projects, assignments] = await Promise.all([
+  const [projects, assignments, clientLinks] = await Promise.all([
     db.select({ projectId: projectMemberships.projectId, canShareReviews: projectMemberships.canShareReviews })
       .from(projectMemberships).where(and(eq(projectMemberships.organizationId, member.organizationId), eq(projectMemberships.membershipId, member.id), isNull(projectMemberships.removedAt))),
-    db.select({ taskId: taskAssignees.taskId, kind: taskAssignees.kind })
-      .from(taskAssignees).where(and(eq(taskAssignees.organizationId, member.organizationId), eq(taskAssignees.membershipId, member.id), isNull(taskAssignees.removedAt))),
+    db.select({ taskId: taskAssignees.taskId, kind: taskAssignees.kind, membershipId: taskAssignees.membershipId, assignedByMembershipId: taskAssignees.assignedByMembershipId })
+      .from(taskAssignees).where(and(eq(taskAssignees.organizationId, member.organizationId), isNull(taskAssignees.removedAt), sql`(${taskAssignees.membershipId} = ${member.id} or ${taskAssignees.assignedByMembershipId} = ${member.id})`)),
+    db.select({ clientId: clientMemberships.clientId }).from(clientMemberships).where(and(
+      eq(clientMemberships.organizationId, member.organizationId),
+      eq(clientMemberships.membershipId, member.id),
+    )),
   ]);
   for (const project of projects) visibleProjectIds.add(project.projectId);
   const shareProjectIds = projects.filter((project) => project.canShareReviews).map((project) => project.projectId);
@@ -85,7 +94,9 @@ async function resolveDatabaseActor(userId: string, issuedAt: Date | null): Prom
     for (const task of shareTasks) reviewShareTaskIds.add(task.taskId);
   }
   for (const assignment of assignments) {
-    (assignment.kind === "PRIMARY" ? primaryTaskIds : collaboratorTaskIds).add(assignment.taskId);
+    if (assignment.membershipId === member.id) (assignment.kind === "PRIMARY" ? primaryTaskIds : collaboratorTaskIds).add(assignment.taskId);
+    if (assignment.assignedByMembershipId === member.id) assignedByMeTaskIds.add(assignment.taskId);
   }
+  for (const clientLink of clientLinks) linkedClientIds.add(clientLink.clientId);
   return context;
 }

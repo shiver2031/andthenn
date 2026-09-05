@@ -1,18 +1,19 @@
 import { and, createDatabase, eq, inArray, tasks, timeEntries } from "@andthenn/db";
 import { NextResponse } from "next/server";
 import { resolveActorContext } from "../../../../lib/actor-context";
+import { isOperationalLeader } from "@andthenn/domain";
 
 const csv = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
 export async function GET() {
   const actor = await resolveActorContext();
-  if (!actor || actor.role === "TEMP_FREELANCER") return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!actor || actor.role === "CLIENT" || actor.accountType === "TEMPORARY") return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { db } = createDatabase();
   const assignedTaskIds = [...new Set([...actor.primaryTaskIds, ...actor.collaboratorTaskIds])];
-  const taskScope = actor.role === "MANAGER"
+  const taskScope = isOperationalLeader(actor.role)
     ? eq(tasks.organizationId, actor.organizationId)
     : and(eq(tasks.organizationId, actor.organizationId), inArray(tasks.id, assignedTaskIds));
   const [taskRows, timeRows] = await Promise.all([
-    db.select({ id: tasks.id, name: tasks.name, state: tasks.stateKind, dueAt: tasks.dueAt, completedAt: tasks.completedAt }).from(tasks).where(taskScope),
+    db.select({ id: tasks.id, name: tasks.name, state: tasks.executionStatus, dueAt: tasks.dueAt, completedAt: tasks.completedAt }).from(tasks).where(taskScope),
     db.select({ taskId: timeEntries.taskId, minutes: timeEntries.minutes, date: timeEntries.workDate }).from(timeEntries).innerJoin(tasks, eq(tasks.id, timeEntries.taskId)).where(taskScope),
   ]);
   const text = ["section,id,name_or_task,state_or_date,value", ...taskRows.map((row) => ["task", row.id, row.name, row.state, row.dueAt?.toISOString() ?? ""].map(csv).join(",")), ...timeRows.map((row) => ["time", row.taskId, "", row.date, row.minutes].map(csv).join(","))].join("\n");

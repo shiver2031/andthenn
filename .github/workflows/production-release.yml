@@ -1,0 +1,63 @@
+name: production-release
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact reviewed release commit
+        required: true
+        type: string
+      approval_uri:
+        description: AndThenn-owned gs:// URI of the reviewed approval record
+        required: true
+        type: string
+      mode:
+        description: Start a canary or promote an accepted canary
+        required: true
+        type: choice
+        options: [canary, promote]
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require successful quality CI for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: node scripts/verify-release-ci.mjs
+      - uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_RELEASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Fetch reviewed approval packet
+        env:
+          APPROVAL_URI: ${{ inputs.approval_uri }}
+        run: |
+          case "$APPROVAL_URI" in gs://*) ;; *) exit 1 ;; esac
+          gcloud storage cp "$APPROVAL_URI" "$RUNNER_TEMP/release-approvals.json"
+      - name: Enforce approvals and deploy only approved image digests
+        env:
+          RELEASE_APPROVAL_PATH: ${{ runner.temp }}/release-approvals.json
+          RELEASE_REQUIRE_ARTIFACTS: '1'
+          RELEASE_MODE: ${{ inputs.mode }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_MIGRATION_JOB: ${{ vars.GCP_MIGRATION_JOB }}
+        run: node scripts/production-release.mjs

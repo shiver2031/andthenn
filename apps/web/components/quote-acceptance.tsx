@@ -175,7 +175,7 @@ export function QuoteAcceptance({ token }: { token: string }) {
                 <CheckCircle2 className="mx-auto size-12 text-emerald-400" />
                 <h2 className="mt-4 text-xl font-bold">Quotation accepted</h2>
                 <p className="mt-2 text-sm text-zinc-400">
-                  Evidence recorded {new Date(acceptedAt).toLocaleString()}.
+                  Evidence recorded {new Date(acceptedAt).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" })}.
                 </p>
               </div>
             ) : (
@@ -233,7 +233,7 @@ export function QuoteAcceptance({ token }: { token: string }) {
                 )}
                 {data.expiresAt && (
                   <p className="text-center text-xs text-zinc-600">
-                    Link expires {new Date(data.expiresAt).toLocaleString()}
+                    Link expires {new Date(data.expiresAt).toLocaleString("en-GB", { timeZone: "Asia/Kolkata" })}
                   </p>
                 )}
               </form>

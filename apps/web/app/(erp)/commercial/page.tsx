@@ -19,7 +19,7 @@ import {
   sql,
   templateImprovementSuggestions,
 } from "@andthenn/db";
-import { can } from "@andthenn/domain";
+import { can, isOperationalLeader } from "@andthenn/domain";
 import {
   Archive,
   CheckCircle2,
@@ -68,6 +68,7 @@ export default async function CommercialPage({
   const actor = await resolveActorContext();
   if (!actor) return null;
   if (!can(actor, "finances:view", { explicitlyGranted: true })) notFound();
+  const canManageFinances = can(actor, "finances:view", { explicitlyGranted: true });
   const { db } = createDatabase();
   const projectRows = await db
     .select({
@@ -86,7 +87,7 @@ export default async function CommercialPage({
     .where(eq(projects.organizationId, actor.organizationId))
     .orderBy(projects.deadline);
   const visibleProjects =
-    actor.role === "MANAGER"
+    isOperationalLeader(actor.role)
       ? projectRows
       : projectRows.filter((project) =>
           actor.visibleProjectIds.has(project.id),
@@ -319,7 +320,7 @@ export default async function CommercialPage({
               <div className="grid gap-5 p-5 xl:grid-cols-3">
                 <section>
                   <h2 className="text-sm font-bold">Budget and invoice</h2>
-                  {actor.role === "MANAGER" ? (
+                  {canManageFinances ? (
                     <>
                       <form
                         action={saveProjectBudget}
@@ -486,7 +487,7 @@ export default async function CommercialPage({
                 </section>
                 <section>
                   <h2 className="text-sm font-bold">Quotation automation</h2>
-                  {actor.role === "MANAGER" && (
+                  {canManageFinances && (
                     <form
                       action={createProjectQuote}
                       className="mt-3 grid gap-2 rounded-xl border border-zinc-100 p-3"
@@ -569,7 +570,7 @@ export default async function CommercialPage({
                                 (line) => line.quoteVersionId === version.id,
                               )
                               .map((line) =>
-                                actor.role === "MANAGER" &&
+                                canManageFinances &&
                                 version.status === "DRAFT" ? (
                                   <form
                                     key={line.id}
@@ -652,7 +653,7 @@ export default async function CommercialPage({
                                   </p>
                                 ),
                               )}
-                            {actor.role === "MANAGER" &&
+                            {canManageFinances &&
                               version.status === "DRAFT" && (
                                 <form
                                   action={finalizeQuoteVersion}
@@ -668,7 +669,7 @@ export default async function CommercialPage({
                                   </Button>
                                 </form>
                               )}
-                            {actor.role === "MANAGER" &&
+                            {canManageFinances &&
                               version.status === "FINAL" && (
                                 <>
                                   <QuoteLinkForm quoteVersionId={version.id} />
@@ -769,7 +770,7 @@ export default async function CommercialPage({
                             {delivery.status.replaceAll("_", " ")}
                           </Badge>
                         </div>
-                        {actor.role === "MANAGER" &&
+                        {canManageFinances &&
                           delivery.status ===
                             "READY_FOR_MANAGER_CONFIRMATION" && (
                             <form action={confirmDeliverable} className="mt-2">
@@ -783,7 +784,7 @@ export default async function CommercialPage({
                               </Button>
                             </form>
                           )}
-                        {actor.role === "MANAGER" &&
+                        {canManageFinances &&
                           delivery.status === "COMPLETED" && (
                             <form
                               action={reopenDeliverable}
@@ -813,7 +814,7 @@ export default async function CommercialPage({
                       </div>
                     ))}
                   </div>
-                  {actor.role === "MANAGER" &&
+                  {canManageFinances &&
                     project.status === "READY_FOR_FINAL_CLOSURE" && (
                       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
                         <p className="text-xs font-bold text-amber-900">
@@ -900,7 +901,7 @@ export default async function CommercialPage({
                         </form>
                       </div>
                     )}
-                  {actor.role === "MANAGER" &&
+                  {canManageFinances &&
                     project.status === "COMPLETED" && (
                       <div className="mt-4 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                         <form action={reopenProject} className="grid gap-2">
@@ -964,7 +965,7 @@ export default async function CommercialPage({
           </div>
         )}
       </div>
-      {actor.role === "MANAGER" &&
+      {canManageFinances &&
         allSuggestions.some(
           (item) =>
             item.status === "PROPOSED" &&

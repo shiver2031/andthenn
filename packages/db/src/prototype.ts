@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
@@ -73,7 +73,7 @@ async function migrateAndSeed(url: string) {
   await new Promise<void>((resolveSeed, reject) => seed.once("exit", (code) => code === 0 ? resolveSeed() : reject(new Error(`Prototype seed failed (${code})`))));
 }
 
-async function ensurePrototypeMediaFixtures(url: string) {
+async function ensurePrototypeMediaFixtures(url: string, fixtureDataDir = dataDir) {
   const sql = postgres(url, { prepare: false, max: 1 });
   try {
     const [version] = await sql<{ storage_key: string }[]>`
@@ -84,8 +84,8 @@ async function ensurePrototypeMediaFixtures(url: string) {
       limit 1
     `;
     if (!version) return;
-    const destination = resolve(join(dataDir, "storage"), version.storage_key);
-    const storageRoot = resolve(join(dataDir, "storage"));
+    const destination = resolve(join(fixtureDataDir, "storage"), version.storage_key);
+    const storageRoot = resolve(join(fixtureDataDir, "storage"));
     if (!destination.startsWith(`${storageRoot}/`)) throw new Error("Invalid seeded storage key");
     if (existsSync(destination)) return;
     const encoded = await readFile(join(root, "packages/db/fixtures/prototype-review.mp4.base64"), "utf8");
@@ -112,12 +112,15 @@ async function start() {
   // Older persistent prototype directories may predate the bundled review
   // fixture, so repair it on every start without replacing user-created data.
   await ensurePrototypeMediaFixtures(url);
-  const env = { ...process.env, APP_RUNTIME: "prototype", APP_URL: `http://127.0.0.1:${port}`, DATABASE_URL: url, REVIEW_TOKEN_PEPPER: "prototype-pepper", PROTOTYPE_DATA_DIR: dataDir, PROTOTYPE_SIGNING_SECRET: process.env.PROTOTYPE_SIGNING_SECRET ?? "andthenn-local-prototype-secret", PORT: String(port), HOSTNAME: "127.0.0.1" };
+  const env = { ...process.env, APP_RUNTIME: "prototype", APP_URL: `http://localhost:${port}`, DATABASE_URL: url, REVIEW_TOKEN_PEPPER: "prototype-pepper", PROTOTYPE_DATA_DIR: dataDir, PROTOTYPE_SIGNING_SECRET: process.env.PROTOTYPE_SIGNING_SECRET ?? "andthenn-local-prototype-secret", PORT: String(port), HOSTNAME: "127.0.0.1" };
   console.log(`AndThenn prototype is ready at ${env.APP_URL}`);
   const web = spawn("pnpm", ["--filter", "@andthenn/web", "dev"], { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
-  const stop = async () => { web.kill("SIGTERM"); await pg.stop().catch(() => undefined); };
+  const workerPort = await availablePort();
+  const worker = spawn(process.execPath, [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "apps/worker/src/index.ts")], { cwd: root, env: { ...env, PORT: String(workerPort), PROTOTYPE_FIXTURE_INSPECTION: "1" }, stdio: "inherit" });
+  const stop = async () => { web.kill("SIGTERM"); worker.kill("SIGTERM"); await pg.stop().catch(() => undefined); };
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
   await new Promise<void>((resolveWeb) => web.once("exit", () => resolveWeb()));
+  worker.kill("SIGTERM");
   await pg.stop();
 }
 
@@ -143,38 +146,62 @@ async function run(command: string, args: string[], environment: NodeJS.ProcessE
   if (code !== 0) throw new Error(`${command} ${args.join(" ")} failed (${code})`);
 }
 
-async function runAcceptance() {
+async function runAcceptance(browserProject?: string) {
   const temporaryDataDir = await mkdtemp(join(tmpdir(), "andthenn-prototype-"));
   const webPort = await availablePort();
   const dbPort = await availablePort();
   const pg = new EmbeddedPostgres({ databaseDir: join(temporaryDataDir, "postgres"), user: "postgres", password: "prototype", port: dbPort, persistent: false, postgresFlags: ["-h", "127.0.0.1"] });
   const databaseUrl = `postgres://postgres:prototype@127.0.0.1:${dbPort}/postgres`;
   let web: ReturnType<typeof spawn> | null = null;
+  let worker: ReturnType<typeof spawn> | null = null;
   try {
     await pg.initialise(); await pg.start(); await migrateAndSeed(databaseUrl);
-    const appUrl = `http://127.0.0.1:${webPort}`;
+    await ensurePrototypeMediaFixtures(databaseUrl, temporaryDataDir);
+    const appUrl = `http://localhost:${webPort}`;
     const environment = { ...process.env, APP_RUNTIME: "prototype", APP_URL: appUrl, DATABASE_URL: databaseUrl, REVIEW_TOKEN_PEPPER: "prototype-pepper", PROTOTYPE_DATA_DIR: temporaryDataDir, PROTOTYPE_SIGNING_SECRET: "andthenn-acceptance-secret", PORT: String(webPort), HOSTNAME: "127.0.0.1" };
     // Build once before acceptance. Development compilation makes browser outcomes
     // depend on route compilation order instead of the product being tested.
-    await run("pnpm", ["--filter", "@andthenn/web", "build"], environment);
+    await run("pnpm", ["build"], environment);
     // The workspace does not emit a standalone server artifact, despite the
     // Next configuration warning, so `next start` is the verified runtime.
     web = spawn("pnpm", ["--filter", "@andthenn/web", "start"], { cwd: root, env: environment, stdio: "inherit", shell: process.platform === "win32" });
     await waitFor(`${appUrl}/api/health/ready`, web);
-    const result = spawn("pnpm", ["exec", "playwright", "test", "--config=playwright.prototype.config.ts"], { cwd: root, env: { ...environment, PROTOTYPE_APP_URL: appUrl }, stdio: "inherit", shell: process.platform === "win32" });
+    const workerPort = await availablePort();
+    worker = spawn(process.execPath, [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "apps/worker/src/index.ts")], { cwd: root, env: { ...environment, PORT: String(workerPort), PROTOTYPE_FIXTURE_INSPECTION: "1" }, stdio: "inherit" });
+    await waitFor(`http://127.0.0.1:${workerPort}/health/ready`, worker);
+    const result = spawn("pnpm", ["exec", "playwright", "test", "--config=playwright.prototype.config.ts", ...(browserProject ? ["--project", browserProject] : []), ...(process.env.PROTOTYPE_TEST_GREP ? ["--grep", process.env.PROTOTYPE_TEST_GREP] : [])], { cwd: root, env: { ...environment, PROTOTYPE_APP_URL: appUrl, ...(browserProject ? { PROTOTYPE_RESULT_DIR: join(root, "test-results", browserProject) } : {}) }, stdio: "inherit", shell: process.platform === "win32" });
     const code = await new Promise<number | null>((resolveExit) => result.once("exit", resolveExit));
     if (code !== 0) throw new Error(`Prototype acceptance failed (${code})`);
   } finally {
     web?.kill("SIGTERM");
+    worker?.kill("SIGTERM");
     await pg.stop().catch(() => undefined);
     await rm(temporaryDataDir, { recursive: true, force: true });
   }
 }
 
+async function runAcceptanceMatrix() {
+  const browserProjects = ["chromium-375", "chromium-768", "chromium-1024", "chromium-1440", "webkit-375", "webkit-1440"];
+  const reports = [];
+  let failed = false;
+  for (const browserProject of browserProjects) {
+    await rm(join(root, "test-results", browserProject), { recursive: true, force: true });
+    try { await runAcceptance(browserProject); } catch (error) { failed = true; console.error(error); }
+    const path = join(root, "test-results", browserProject, "prototype-results.json");
+    if (existsSync(path)) reports.push(JSON.parse(await readFile(path, "utf8")));
+  }
+  const stats = { expected: 0, unexpected: 0, skipped: 0, flaky: 0, duration: 0 };
+  for (const report of reports) for (const key of Object.keys(stats) as (keyof typeof stats)[]) stats[key] += Number(report.stats?.[key] ?? 0);
+  await mkdir(join(root, "test-results"), { recursive: true });
+  await writeFile(join(root, "test-results", "prototype-results.json"), JSON.stringify({ releaseCommit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(), cleanCheckout: !execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim(), config: reports[0]?.config, suites: reports.flatMap((report) => report.suites ?? []), errors: reports.flatMap((report) => report.errors ?? []), stats }, null, 2));
+  console.warn(`Isolated browser matrix: ${stats.expected} passed, ${stats.unexpected} failed, ${stats.skipped} skipped.`);
+  if (failed || reports.length !== browserProjects.length) throw new Error("Browser acceptance matrix failed; inspect per-browser artifacts.");
+}
+
 async function repeatAcceptance() {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     console.warn(`Prototype acceptance rehearsal ${attempt}/3`);
-    await runAcceptance();
+    await runAcceptanceMatrix();
   }
 }
 
@@ -182,7 +209,7 @@ async function main() {
   const command = process.argv[2] ?? "start";
   if (command === "start") return start();
   if (command === "reset") return reset();
-  if (command === "acceptance") return runAcceptance();
+  if (command === "acceptance") return runAcceptanceMatrix();
   if (command === "repeat") return repeatAcceptance();
   throw new Error(`Unknown prototype command: ${command}`);
 }

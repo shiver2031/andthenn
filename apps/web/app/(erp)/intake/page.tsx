@@ -1,8 +1,10 @@
+import { sql } from "@andthenn/db";
 import { Badge, Button } from "@andthenn/ui";
 import { and, clients, createDatabase, eq, intakeItems, intakeSourceItems, memberships, profiles, projects, proposals } from "@andthenn/db";
 import { FileText, Inbox, Mail, MessageCircle, PlayCircle, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { can } from "@andthenn/domain";
 import { PageHeading } from "../../../components/page-heading";
 import { ProjectSetupWizard } from "../../../components/project-setup-wizard";
 import { resolveActorContext } from "../../../lib/actor-context";
@@ -16,7 +18,7 @@ const statusTone = (status: string) => status === "CONVERTED" || status === "APP
 export default async function IntakePage({ searchParams }: { searchParams: Promise<{ view?: string; item?: string; setup?: string }> }) {
   const actor = await resolveActorContext();
   if (!actor) return null;
-  if (actor.role !== "MANAGER") redirect("/home");
+  if (!can(actor, "intake:process")) redirect("/home");
   const params = await searchParams;
   if (params.setup && !params.view) redirect(`/intake?view=setups&setup=${params.setup}`);
   const view = params.view === "setups" || params.view === "history" ? params.view : "queue";
@@ -25,7 +27,7 @@ export default async function IntakePage({ searchParams }: { searchParams: Promi
     db.select().from(intakeItems).where(eq(intakeItems.organizationId, actor.organizationId)).orderBy(intakeItems.createdAt),
     db.select({ id: memberships.id, name: profiles.displayName }).from(memberships).innerJoin(profiles, eq(profiles.id, memberships.profileId)).where(eq(memberships.organizationId, actor.organizationId)),
     db.select({ id: clients.id, name: clients.name }).from(clients).where(and(eq(clients.organizationId, actor.organizationId), eq(clients.lifecycle, "ACTIVE"))),
-    db.select({ id: memberships.id, name: profiles.displayName, role: memberships.role }).from(memberships).innerJoin(profiles, eq(profiles.id, memberships.profileId)).where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.status, "ACTIVE"))),
+    db.select({ id: memberships.id, name: profiles.displayName, role: memberships.role }).from(memberships).innerJoin(profiles, eq(profiles.id, memberships.profileId)).where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.status, "ACTIVE"), sql`${memberships.role} <> 'CLIENT' and (${memberships.expiresAt} is null or ${memberships.expiresAt} > now()) and (${memberships.startsAt} is null or ${memberships.startsAt} <= now())`)),
     db.select().from(proposals).where(eq(proposals.organizationId, actor.organizationId)).orderBy(proposals.updatedAt),
     db.select({ id: projects.id, proposalId: projects.proposalId, name: projects.name }).from(projects).where(eq(projects.organizationId, actor.organizationId)),
   ]);

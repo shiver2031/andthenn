@@ -7,12 +7,13 @@ import {
 import { revalidatePath } from "next/cache";
 import { resolveActorContext } from "../../../lib/actor-context";
 import { demoModeEnabled } from "../../../lib/config";
+import { can } from "@andthenn/domain";
 
 async function actorOrThrow(manager = false) {
   if (demoModeEnabled()) throw new Error("Demo mode is read-only");
   const actor = await resolveActorContext();
   if (!actor) throw new Error("Authentication required");
-  if (manager && actor.role !== "MANAGER") throw new Error("Manager permission required");
+  if (manager && !can(actor, "company:view")) throw new Error("Company administration permission required");
   return actor;
 }
 

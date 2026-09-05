@@ -22,6 +22,28 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:fast
+      - run: node --test scripts/release-gate.test.mjs
+
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm acceptance:prototype
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-acceptance-evidence
+          path: test-results/
 
   infrastructure:
     runs-on: ubuntu-latest
