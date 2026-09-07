@@ -1,8 +1,9 @@
 "use server";
+import { assignmentNotification } from "../../lib/assignment-notification";
 
 import {
   activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, fileApprovals, finalDeliveries, fileAssets, fileVersions, inArray, internalComments, isNull,
-  memberships, notifications, planningScenarios, projectExpenses, projectMemberships, projectPacks, projects, taskAssignees,
+  memberships, notifications, organizations, planningScenarios, projectExpenses, projectMemberships, projectPacks, projects, taskAssignees,
   taskReviewSelections, tasks, timeEntries, workflowStages, workflows, sql,
 } from "@andthenn/db";
 import { defaultProjectPhases, assertTaskExecutionTransition, assertTaskTransition, authorize, can, isOperationalLeader, taskExecutionStatuses, type TaskExecutionStatus } from "@andthenn/domain";
@@ -93,6 +94,7 @@ export async function createTask(form: FormData) {
   if (!name) throw new Error("Task name is required");
   if (!ownerId || collaboratorIds.includes(ownerId)) throw new Error("Choose one primary owner and distinct collaborators");
   const { db } = createDatabase();
+  const [organization] = await db.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, actor.organizationId)).limit(1);
   const [deliverable] = await db.select({ id: deliverables.id, projectId: deliverables.projectId, dueAt: deliverables.dueAt }).from(deliverables).where(and(eq(deliverables.id, deliverableId), eq(deliverables.organizationId, actor.organizationId))).limit(1);
   if (!deliverable) throw new Error("Deliverable not found");
   const accessibleTaskIds = [...actor.primaryTaskIds, ...actor.collaboratorTaskIds, ...actor.assignedByMeTaskIds];
@@ -111,7 +113,7 @@ export async function createTask(form: FormData) {
     const [task] = await tx.insert(tasks).values({ organizationId: actor.organizationId, deliverableId, currentWorkflowStageId: stage.id, requiresClientDelivery: form.get("requiresClientDelivery") === "on", name, description: text(form, "description"), priority: text(form, "priority") || "NORMAL", dueAt, estimatedMinutes: text(form, "estimatedMinutes") ? Number(text(form, "estimatedMinutes")) : null }).returning();
     await tx.insert(taskAssignees).values([{ organizationId: actor.organizationId, taskId: task!.id, membershipId: ownerId, kind: "PRIMARY" as const, assignedByMembershipId: actor.membershipId }, ...collaboratorIds.map((membershipId) => ({ organizationId: actor.organizationId, taskId: task!.id, membershipId, kind: "COLLABORATOR" as const, assignedByMembershipId: actor.membershipId }))]);
     const recipients = assigneeIds.filter((id) => id !== actor.membershipId);
-    if (recipients.length) await tx.insert(notifications).values(recipients.map((recipientMembershipId) => ({ organizationId: actor.organizationId, recipientMembershipId, eventType: "task.assigned", title: "New task assigned", body: task!.name, objectType: "TASK", objectId: task!.id })));
+    if (recipients.length) await tx.insert(notifications).values(recipients.map((recipientMembershipId) => ({ organizationId: actor.organizationId, recipientMembershipId, eventType: "task.assigned", title: "New task assigned", body: assignmentNotification(actor.displayName, task!, organization?.timezone), objectType: "TASK", objectId: task!.id })));
     await audit(tx as unknown as ReturnType<typeof createDatabase>["db"], actor, "task.created", "TASK", task!.id, null, { deliverableId, ownerId, collaboratorIds, dueAt: dueAt.toISOString() });
     return task!;
   });
@@ -127,6 +129,7 @@ export async function updateProjectTask(form: FormData) {
   const dueAt = date(form, "dueAt"), name = text(form, "name"), estimate = text(form, "estimatedMinutes") ? Number(text(form, "estimatedMinutes")) : null;
   if (!name || (estimate !== null && (!Number.isInteger(estimate) || estimate <= 0))) throw new Error("A task name and positive estimate are required.");
   const { db } = createDatabase();
+  const [organization] = await db.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, actor.organizationId)).limit(1);
   const projectId = await db.transaction(async (tx) => {
     const { task, assignments, primary, projectId, projectStatus, outputDueAt } = await lockActiveTask(tx, actor, taskId);
     if (task.version !== expectedVersion) throw new Error("This task changed elsewhere. Refresh and retry.");
@@ -153,7 +156,7 @@ export async function updateProjectTask(form: FormData) {
       const added = desired.filter((row) => !assignments.some((old) => old.membershipId === row.membershipId && old.kind === row.kind));
       for (const row of added) await tx.insert(taskAssignees).values({ organizationId: actor.organizationId, taskId, ...row, assignedByMembershipId: actor.membershipId, assignedAt: now }).onConflictDoUpdate({ target: [taskAssignees.taskId, taskAssignees.membershipId], set: { kind: row.kind, removedAt: null, assignedAt: now, assignedByMembershipId: actor.membershipId } });
       const recipients = [...new Set([...added.map((row) => row.membershipId), ...(primaryChanged && task.completionReviewerMembershipId ? [task.completionReviewerMembershipId] : [])])].filter((id) => id !== actor.membershipId);
-      if (recipients.length) await tx.insert(notifications).values(recipients.map((recipientMembershipId) => ({ organizationId: actor.organizationId, recipientMembershipId, eventType: "task.assigned", title: "Task assignment changed", body: primaryChanged && task.completionRequestedAt ? `${name}: previous completion request withdrawn by reassignment.` : name, objectType: "TASK", objectId: taskId })));
+      if (recipients.length) await tx.insert(notifications).values(recipients.map((recipientMembershipId) => ({ organizationId: actor.organizationId, recipientMembershipId, eventType: "task.assigned", title: "Task assignment changed", body: added.some((row) => row.membershipId === recipientMembershipId) ? assignmentNotification(actor.displayName, { name, dueAt, priority: text(form, "priority") || "NORMAL" }, organization?.timezone) : `${name}: previous completion request withdrawn by reassignment.`, objectType: "TASK", objectId: taskId })));
       await audit(tx as never, actor, "task.reassigned", "TASK", taskId, { assignments }, { assignments: desired, assignedAt: now.toISOString(), assignedBy: actor.membershipId, completionWithdrawn: primaryChanged && Boolean(task.completionRequestedAt) }, reason);
     }
     const [changed] = await tx.update(tasks).set({ name, description: text(form, "description"), priority: text(form, "priority") || "NORMAL", dueAt: deadlineChanged ? dueAt : task.dueAt, estimatedMinutes: estimate, version: expectedVersion + 1, updatedAt: now,

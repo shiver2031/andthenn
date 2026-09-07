@@ -1,6 +1,7 @@
 "use server";
+import { assignmentNotification } from "../../../lib/assignment-notification";
 
-import { sql, activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, inArray, intakeConversions, intakeItems, intakeSourceItems, memberships, notifications, projectMemberships, projects, proposals, taskAssignees, tasks, workflowStages, workflows } from "@andthenn/db";
+import { sql, activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, inArray, intakeConversions, intakeItems, intakeSourceItems, memberships, notifications, organizations, projectMemberships, projects, proposals, taskAssignees, tasks, workflowStages, workflows } from "@andthenn/db";
 import { projectSetupDraftSchema, projectSetupFinalizeSchema, projectSetupSaveSchema } from "@andthenn/contracts";
 import { authorize, defaultProjectPhases } from "@andthenn/domain";
 import { createHash } from "node:crypto";
@@ -107,6 +108,7 @@ export async function finalizeProjectSetup(form: FormData) {
     if (conversion?.projectId) redirect(`/projects?project=${conversion.projectId}`);
   }
   const draft = projectSetupDraftSchema.parse(existingProposal.draftData);
+  const [organization] = await db.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, actor.organizationId)).limit(1);
   const project = await db.transaction(async (tx) => {
     const [proposal] = await tx.select().from(proposals).where(and(eq(proposals.id, input.proposalId), eq(proposals.organizationId, actor.organizationId))).limit(1);
     if (!proposal || proposal.status !== "PENDING" || proposal.version !== input.expectedVersion) throw new Error("This setup changed elsewhere. Refresh and continue from the latest version.");
@@ -133,7 +135,8 @@ export async function finalizeProjectSetup(form: FormData) {
     await tx.insert(deliverables).values(draft.deliverables.map((deliverable) => ({ id: deliverable.id, organizationId: actor.organizationId, projectId: created!.id, name: deliverable.name, quantity: deliverable.quantity, format: deliverable.format, dueAt: new Date(deliverable.dueAt), notes: deliverable.notes || null })));
     await tx.insert(tasks).values(draft.tasks.map((task) => ({ id: task.id, organizationId: actor.organizationId, deliverableId: task.deliverableId, currentWorkflowStageId: firstStage.id, name: task.name, description: task.description, priority: task.priority, dueAt: new Date(task.dueAt), estimatedMinutes: task.estimatedMinutes, requiresClientDelivery: task.requiresClientDelivery })));
     await tx.insert(taskAssignees).values(draft.tasks.flatMap((task) => [{ organizationId: actor.organizationId, taskId: task.id, membershipId: task.primaryOwnerId, kind: "PRIMARY" as const, assignedByMembershipId: actor.membershipId }, ...task.collaboratorIds.map((membershipId) => ({ organizationId: actor.organizationId, taskId: task.id, membershipId, kind: "COLLABORATOR" as const, assignedByMembershipId: actor.membershipId }))]));
-    await tx.insert(notifications).values(draft.tasks.map((task) => ({ organizationId: actor.organizationId, recipientMembershipId: task.primaryOwnerId, eventType: "task.assigned", title: "New task assigned", body: task.name, objectType: "TASK", objectId: task.id })));
+    const assignmentNotes = draft.tasks.flatMap((task) => [...new Set([task.primaryOwnerId, ...task.collaboratorIds])].filter((id) => id !== actor.membershipId).map((recipientMembershipId) => ({ organizationId: actor.organizationId, recipientMembershipId, eventType: "task.assigned", title: "New task assigned", body: assignmentNotification(actor.displayName, task, organization?.timezone), objectType: "TASK", objectId: task.id })));
+    if (assignmentNotes.length) await tx.insert(notifications).values(assignmentNotes);
     const [changedProposal] = await tx.update(proposals).set({ status: "APPROVED", decidedByMembershipId: actor.membershipId, decidedAt: new Date(), version: proposal.version + 1, updatedAt: new Date() }).where(and(eq(proposals.id, proposal.id), eq(proposals.version, input.expectedVersion))).returning();
     if (!changedProposal) throw new Error("This setup changed elsewhere. Refresh and continue from the latest version.");
     if (proposal.intakeItemId) {

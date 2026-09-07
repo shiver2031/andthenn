@@ -9,6 +9,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { crmSchemaReady } from "./crm-schema";
+import { migratePrototype } from "./prototype-migrations";
 
 async function freePort() {
   const server = createServer();
@@ -110,6 +111,62 @@ describe("production journal-driven CRM migration", () => {
       clean = postgres(`postgres://postgres:test@127.0.0.1:${port}/crm_clean_install`, { max: 1, onnotice: () => {} });
       await bootstrap(clean); await migrate(drizzle(clean), { migrationsFolder: folder });
       expect((await clean`select to_regclass('project_expenses')::text as value`)[0]?.value).toBe("project_expenses");
+    } finally {
+      await clean?.end(); await client?.end(); await pg.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
+
+
+describe("persistent prototype migrations", () => {
+  it("upgrades an unjournaled 0011 database without losing data and supports restart and fresh install", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "andthenn-prototype-migration-test-"));
+    const port = await freePort();
+    const pg = new EmbeddedPostgres({ databaseDir: join(directory, "postgres"), user: "postgres", password: "test", port, persistent: false, postgresFlags: ["-h", "127.0.0.1"] });
+    const url = `postgres://postgres:test@127.0.0.1:${port}/postgres`;
+    let client: postgres.Sql | undefined;
+    let clean: postgres.Sql | undefined;
+    try {
+      await pg.initialise(); await pg.start();
+      client = postgres(url, { max: 1, onnotice: () => {} });
+      await client.unsafe("CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN");
+      await bootstrap(client);
+      const source = new URL("../migrations/", import.meta.url);
+      const journal = JSON.parse(await readFile(new URL("meta/_journal.json", source), "utf8")) as { entries: { idx: number; tag: string }[] };
+      // Reproduce the old runner: raw SQL with no migration journal.
+      for (const entry of journal.entries.filter((entry) => entry.idx <= 11)) {
+        const ddl = (await readFile(new URL(`${entry.tag}.sql`, source), "utf8")).replace(/CREATE EXTENSION IF NOT EXISTS pgmq;\s*/g, "");
+        for (const statement of ddl.split("--> statement-breakpoint").filter((value) => value.trim())) await client.unsafe(statement);
+      }
+      const org = randomUUID();
+      await client`insert into organizations (id, name, slug) values (${org}, 'User-created prototype data', 'preserved')`;
+      const demoOrg = "20000000-0000-4000-8000-000000000001", demoProfile = "21000000-0000-4000-8000-000000000001", demoMember = "22000000-0000-4000-8000-000000000001";
+      await client`insert into organizations (id, name, slug) values (${demoOrg}, 'AndThenn Media', 'andthenn-media')`;
+      await client`insert into profiles (id, auth_user_id, display_name, email) values (${demoProfile}, '10000000-0000-4000-8000-000000000001', 'Mira Shah', 'mira@andthenn.example')`;
+      await client`insert into memberships (id, organization_id, profile_id, role, account_type, status) values (${demoMember}, ${demoOrg}, ${demoProfile}, 'MANAGER', 'PERMANENT', 'ACTIVE')`;
+      await expect(migratePrototype(url)).rejects.toThrow("Unrecognized legacy prototype schema");
+      await migratePrototype(url, true);
+      await migratePrototype(url, true);
+      expect((await client`select role, finance_access from memberships where id=${demoMember}`)[0]).toMatchObject({ role: "FOUNDER", finance_access: true });
+      expect((await client`select role from memberships where id='22000000-0000-4000-8000-000000000006'`)[0]?.role).toBe("MANAGER");
+      expect((await client`select count(*)::int as n from prototype_data_migrations`)[0]?.n).toBe(1);
+      // An intentional later role change must not be overwritten on restart.
+      await client`update memberships set role='MANAGER', finance_access=false where id=${demoMember}`;
+      await migratePrototype(url, true);
+      expect((await client`select role, finance_access from memberships where id=${demoMember}`)[0]).toMatchObject({ role: "MANAGER", finance_access: false });
+      expect((await client`select name from organizations where id = ${org}`)[0]?.name).toBe("User-created prototype data");
+      expect(await crmSchemaReady(drizzle(client))).toBe(true);
+      expect(await client`select client_id from client_memberships where organization_id = ${org} and membership_id = ${randomUUID()}`).toHaveLength(0);
+      expect(Number((await client`select count(*) as count from drizzle.__drizzle_migrations`)[0]?.count)).toBe(journal.entries.length);
+      // Roles belong to the cluster; a new database still needs auth and PGMQ.
+      // Use a separate cluster database with the already-existing shared roles.
+      await client.unsafe("CREATE DATABASE prototype_clean");
+      const cleanUrl = `postgres://postgres:test@127.0.0.1:${port}/prototype_clean`;
+      await migratePrototype(cleanUrl);
+      await migratePrototype(cleanUrl);
+      clean = postgres(cleanUrl, { max: 1, onnotice: () => {} });
+      expect(await crmSchemaReady(drizzle(clean))).toBe(true);
     } finally {
       await clean?.end(); await client?.end(); await pg.stop();
       await rm(directory, { recursive: true, force: true });

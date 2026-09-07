@@ -1,3 +1,4 @@
+import { TaskMutationBoundary } from "../../../../components/task-mutation-boundary";
 import { Badge, Button } from "@andthenn/ui";
 import Link from "next/link";
 import { ChevronRight, Clock3 } from "lucide-react";
@@ -287,7 +288,7 @@ export default async function TaskPage({
   const currentStage = task.stateKind === "CLIENT_FEEDBACK_RECEIVED" ? "Client feedback" : task.stateKind === "COMPLETED" ? "Completed" : stages.find((stage) => stage.id === task.stageId)?.name ?? "Workflow";
   const canContribute = isOperationalLeader(actor.role) || actor.primaryTaskIds.has(id) || actor.collaboratorTaskIds.has(id) || actor.assignedByMeTaskIds.has(id);
   return (
-    <>
+    <TaskMutationBoundary>
       <nav className="mb-4 flex items-center gap-1 text-xs text-zinc-400">
         <Link href={`/projects/${task.projectId}`}>{task.project}</Link>
         <ChevronRight size={12} />
@@ -383,6 +384,6 @@ export default async function TaskPage({
         canApprove={isOperationalLeader(actor.role) || actor.primaryTaskIds.has(id)}
         canManageRights={isOperationalLeader(actor.role)}
       />
-    </>
+    </TaskMutationBoundary>
   );
 }

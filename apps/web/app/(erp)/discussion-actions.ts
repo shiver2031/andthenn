@@ -1,5 +1,6 @@
 "use server";
-import { and, auditEvents, createDatabase, deliverables, eq, fileAssets, fileVersions, internalComments, internalCommentMentions, memberships, notifications, projects, tasks } from "@andthenn/db";
+import { inlineMentionIds } from "../../lib/inline-mentions";
+import { and, auditEvents, createDatabase, deliverables, eq, fileAssets, fileVersions, internalComments, internalCommentMentions, memberships, profiles, notifications, projects, tasks } from "@andthenn/db";
 import { revalidatePath } from "next/cache";
 import { resolveActorContext } from "../../lib/actor-context";
 import { demoModeEnabled } from "../../lib/config";
@@ -10,14 +11,15 @@ export async function postDiscussion(form: FormData) {
   if (!actor || actor.role === "CLIENT" || demoModeEnabled()) throw new Error("Internal discussion access required.");
   const taskId = String(form.get("taskId") ?? ""), projectInput = String(form.get("projectId") ?? ""), body = String(form.get("body") ?? "").trim(), parent = String(form.get("parentCommentId") ?? ""), fileVersionId = String(form.get("fileVersionId") ?? ""), requestId = String(form.get("requestId") ?? "");
   if (!body || body.length > 10000 || !isResourceId(requestId) || Boolean(taskId) === Boolean(projectInput) || !isResourceId(taskId || projectInput)) throw new Error("Choose a discussion and write a comment (up to 10,000 characters).");
-  const recipients = [...new Set(form.getAll("mentionMembershipId").map(String))];
+  const selectedRecipients = [...new Set(form.getAll("mentionMembershipId").map(String))];
   const { db } = createDatabase();
   const projectId = await db.transaction(async (tx) => {
     const [lineage] = taskId ? await tx.select({ id: deliverables.projectId }).from(tasks).innerJoin(deliverables, eq(deliverables.id, tasks.deliverableId)).where(and(eq(tasks.id, taskId), eq(tasks.organizationId, actor.organizationId))).limit(1) : [{ id: projectInput }];
     if (!lineage) throw new Error("Discussion unavailable.");
     const [project] = await tx.select().from(projects).where(and(eq(projects.id, lineage.id), eq(projects.organizationId, actor.organizationId))).limit(1).for("update");
     if (!project) throw new Error("Discussion unavailable.");
-    const members = await tx.select({ id: memberships.id, role: memberships.role, sessionRevokedAfter: memberships.sessionRevokedAfter }).from(memberships).where(discussionMemberScope(actor.organizationId, project.id, taskId || undefined)).for("share");
+    const members = await tx.select({ id: memberships.id, name: profiles.displayName, role: memberships.role, sessionRevokedAfter: memberships.sessionRevokedAfter }).from(memberships).innerJoin(profiles, eq(profiles.id, memberships.profileId)).where(discussionMemberScope(actor.organizationId, project.id, taskId || undefined)).for("share");
+    const recipients = [...new Set([...selectedRecipients, ...inlineMentionIds(body, members)])];
     const currentActor = members.find((member) => member.id === actor.membershipId);
     if (!currentActor || currentActor.role !== actor.role || (currentActor.sessionRevokedAfter && (!actor.sessionIssuedAt || actor.sessionIssuedAt <= currentActor.sessionRevokedAfter))) throw new Error("Your access changed. Sign in again.");
     if (!members.some((member) => member.id === actor.membershipId) || recipients.some((id) => !members.some((member) => member.id === id))) throw new Error("Choose active internal teammates who can access this discussion.");

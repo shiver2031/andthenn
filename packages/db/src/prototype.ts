@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 import postgres from "postgres";
+import { migratePrototype } from "./prototype-migrations";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const dataDir = resolve(process.env.PROTOTYPE_DATA_DIR ?? join(root, ".prototype"));
@@ -31,44 +32,8 @@ async function availablePort() {
   });
 }
 
-const pgmqBootstrap = `
-CREATE SCHEMA IF NOT EXISTS pgmq;
-CREATE TABLE IF NOT EXISTS pgmq.messages (
-  msg_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, queue_name text NOT NULL,
-  message jsonb NOT NULL, enqueued_at timestamptz NOT NULL DEFAULT now(),
-  vt timestamptz NOT NULL DEFAULT now(), read_ct integer NOT NULL DEFAULT 0, archived boolean NOT NULL DEFAULT false
-);
-CREATE OR REPLACE FUNCTION pgmq.create(text) RETURNS void LANGUAGE sql AS 'SELECT NULL::void';
-CREATE OR REPLACE FUNCTION pgmq.send(queue text, payload jsonb, delay_seconds integer DEFAULT 0) RETURNS bigint LANGUAGE plpgsql AS $$
-DECLARE result bigint; BEGIN INSERT INTO pgmq.messages(queue_name, message, vt) VALUES(queue, payload, now() + make_interval(secs => delay_seconds)) RETURNING msg_id INTO result; RETURN result; END; $$;
-CREATE OR REPLACE FUNCTION pgmq.read(queue text, visibility_seconds integer, quantity integer) RETURNS TABLE(msg_id bigint, read_ct integer, message jsonb) LANGUAGE plpgsql AS $$
-BEGIN RETURN QUERY WITH claimed AS (SELECT m.msg_id FROM pgmq.messages m WHERE m.queue_name = queue AND NOT m.archived AND m.vt <= now() ORDER BY m.msg_id FOR UPDATE SKIP LOCKED LIMIT quantity)
-UPDATE pgmq.messages m SET read_ct = m.read_ct + 1, vt = now() + make_interval(secs => visibility_seconds) FROM claimed WHERE m.msg_id = claimed.msg_id RETURNING m.msg_id, m.read_ct, m.message; END; $$;
-CREATE OR REPLACE FUNCTION pgmq.delete(queue text, id bigint) RETURNS boolean LANGUAGE sql AS 'DELETE FROM pgmq.messages WHERE queue_name = queue AND msg_id = id RETURNING true';
-CREATE OR REPLACE FUNCTION pgmq.set_vt(queue text, id bigint, visibility_seconds integer) RETURNS boolean LANGUAGE sql AS 'UPDATE pgmq.messages SET vt = now() + make_interval(secs => visibility_seconds) WHERE queue_name = queue AND msg_id = id RETURNING true';
-CREATE OR REPLACE FUNCTION pgmq.archive(queue text, id bigint) RETURNS boolean LANGUAGE sql AS 'UPDATE pgmq.messages SET archived = true WHERE queue_name = queue AND msg_id = id RETURNING true';
-CREATE OR REPLACE FUNCTION pgmq.metrics_all() RETURNS TABLE(queue_name text, queue_length bigint, newest_msg_age_sec bigint, oldest_msg_age_sec bigint) LANGUAGE sql AS 'SELECT queue_name, count(*) FILTER (WHERE NOT archived), NULL::bigint, extract(epoch FROM now() - min(enqueued_at))::bigint FROM pgmq.messages GROUP BY queue_name';
-`;
-
-async function bootstrap(sql: postgres.Sql) {
-  await sql.unsafe(`CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE SCHEMA IF NOT EXISTS auth; CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid'; CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS 'SELECT ''{}''::jsonb';`);
-  await sql.unsafe(pgmqBootstrap);
-}
-
 async function migrateAndSeed(url: string) {
-  const sql = postgres(url, { prepare: false, max: 1 });
-  try {
-    await bootstrap(sql);
-    const migrationDir = join(root, "packages/db/migrations");
-    const files = (await import("node:fs/promises")).readdir(migrationDir).then((names) => names.filter((name) => name.endsWith(".sql")).sort());
-    for (const file of await files) {
-      const source = await readFile(join(migrationDir, file), "utf8");
-      const matches = source.match(/CREATE EXTENSION IF NOT EXISTS pgmq;/g) ?? [];
-      if (matches.length > 1) throw new Error(`${file} contains an unexpected PGMQ extension declaration`);
-      const prototypeSql = source.replace(/CREATE EXTENSION IF NOT EXISTS pgmq;\s*/g, "");
-      for (const statement of prototypeSql.split("--> statement-breakpoint").map((value) => value.trim()).filter(Boolean)) await sql.unsafe(statement);
-    }
-  } finally { await sql.end(); }
+  await migratePrototype(url);
   const seed = spawn(process.execPath, [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "packages/db/src/seed.ts")], { cwd: root, env: { ...process.env, DATABASE_URL: url, REVIEW_TOKEN_PEPPER: "prototype-pepper" }, stdio: "inherit" });
   await new Promise<void>((resolveSeed, reject) => seed.once("exit", (code) => code === 0 ? resolveSeed() : reject(new Error(`Prototype seed failed (${code})`))));
 }
@@ -109,6 +74,7 @@ async function start() {
   await pg.start();
   const url = `postgres://postgres:prototype@127.0.0.1:${dbPort}/postgres`;
   if (!existsSync(marker)) { await migrateAndSeed(url); await writeFile(marker, "seeded\n"); }
+  else await migratePrototype(url, true);
   // Older persistent prototype directories may predate the bundled review
   // fixture, so repair it on every start without replacing user-created data.
   await ensurePrototypeMediaFixtures(url);
@@ -211,7 +177,12 @@ async function main() {
   const command = process.argv[2] ?? "start";
   if (command === "start") return start();
   if (command === "reset") return reset();
-  if (command === "acceptance") return runAcceptanceMatrix();
+  if (command === "acceptance") {
+    const browserProject = process.argv[3];
+    if (!browserProject) return runAcceptanceMatrix();
+    if (!["chromium-375", "chromium-768", "chromium-1024", "chromium-1440", "webkit-375", "webkit-1440"].includes(browserProject)) throw new Error("Unknown acceptance browser project");
+    return runAcceptance(browserProject);
+  }
   if (command === "repeat") return repeatAcceptance();
   throw new Error(`Unknown prototype command: ${command}`);
 }

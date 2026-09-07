@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import { useTaskMutation } from "./task-mutation-boundary";
 import { useState, useTransition } from "react";
 import { DeliveryActions } from "./delivery-actions";
 import type { FormEvent } from "react";
@@ -88,7 +89,10 @@ export function TaskReviewHub({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [shareUrl, setShareUrl] = useState("");
-  const [pending, startTransition] = useTransition();
+  const [localPending, localTransition] = useTransition();
+  const mutation = useTaskMutation();
+  const pending = mutation?.pending ?? localPending;
+  const startTransition = mutation?.startTransition ?? localTransition;
   const readyVersions = assets
     .flatMap((asset) => asset.versions)
     .filter((version) => version.processingStatus === "READY");
@@ -647,7 +651,7 @@ export function TaskReviewHub({
           )}
         </form>
       )}
-      {message && (
+      {message && !pending && (
         <p className="mt-4 text-xs text-zinc-500" aria-live="polite">
           {message}
         </p>

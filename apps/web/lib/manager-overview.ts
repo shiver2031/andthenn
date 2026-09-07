@@ -1,8 +1,9 @@
+import { getWorkSummary } from "./work-summary";
 import { getDiscussionAttention } from "./discussion-attention";
-import { projectHealth } from "./calendar";
+import { projectHealth, isDueThisWeek, managerProjectGroup } from "./calendar";
 import { getTaskAttention } from "./task-attention";
 import type { ActorContext } from "./actor-context";
-import { and, clients, createDatabase, eq, intakeItems, memberships, profiles, projects, proposals, tasks, deliverables, workflowStages } from "@andthenn/db";
+import { and, clients, createDatabase, eq, intakeItems, memberships, profiles, projects, proposals, tasks, organizations, deliverables, workflowStages } from "@andthenn/db";
 
 const queueStatuses = new Set(["UNASSIGNED", "CLAIMED", "NEEDS_MANAGER_INPUT", "READY_FOR_DECISION"]);
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -26,6 +27,8 @@ export type ManagerHomeData = {
   counts: ManagerNavigationCounts;
   activeProjects: number;
   overdueTasks: number;
+  openTasks: number;
+  dueThisWeek: number;
   clientReviewTasks: number;
   projects: Array<{
     id: string;
@@ -34,6 +37,7 @@ export type ManagerHomeData = {
     owner: string;
     deadlineLabel: string;
     progress: number;
+    group: "Active" | "At Risk" | "Delayed" | "Waiting for Client";
     health: "On track" | "At risk" | "Blocked" | "Waiting";
   }>;
   attention: ManagerAttentionItem[];
@@ -53,7 +57,7 @@ export async function getManagerNavigationCounts(organizationId: string): Promis
 export async function getManagerHomeData(actor: ActorContext, now = new Date()): Promise<ManagerHomeData> {
   const { organizationId } = actor;
   const { db } = createDatabase();
-  const [counts, projectRows, taskRows, queueRows, setupRows] = await Promise.all([
+  const [counts, projectRows, taskRows, queueRows, setupRows, orgRows] = await Promise.all([
     getManagerNavigationCounts(organizationId),
     db.select({ id: projects.id, name: projects.name, status: projects.status, deadline: projects.deadline, client: clients.name, owner: profiles.displayName })
       .from(projects)
@@ -72,6 +76,7 @@ export async function getManagerHomeData(actor: ActorContext, now = new Date()):
       .from(intakeItems).where(eq(intakeItems.organizationId, organizationId)),
     db.select({ id: proposals.id, title: proposals.title, intakeItemId: proposals.intakeItemId, updatedAt: proposals.updatedAt })
       .from(proposals).where(and(eq(proposals.organizationId, organizationId), eq(proposals.status, "PENDING"))),
+    db.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, organizationId)).limit(1),
   ]);
 
   const activeProjects = projectRows.filter((project) => project.status === "ACTIVE" || project.status === "REOPENED");
@@ -84,11 +89,12 @@ export async function getManagerHomeData(actor: ActorContext, now = new Date()):
     return {
       id: project.id, name: project.name, client: project.client, owner: project.owner,
       deadlineLabel: formatDate(project.deadline), progress: projectTasks.length ? Math.round((complete / projectTasks.length) * 100) : 0,
+      group: managerProjectGroup(project.deadline, projectTasks.map((task) => ({ status: task.executionStatus, dueAt: task.dueAt, stage: task.stageSemantic === "CLIENT_REVIEW" ? "Client review" : null })), now),
       health: projectHealth(projectTasks.map((task) => ({ status: task.executionStatus, dueAt: task.dueAt, stage: task.stageSemantic === "CLIENT_REVIEW" ? "Client review" : null })), now),
     };
   });
-  const shared = await getTaskAttention(actor, now);
-  const taskAttention: ManagerAttentionItem[] = shared.map((task) => ({ id: task.id, title: task.name, meta: `${task.client} · ${task.reasons.join(" · ")}`, tone: task.status === "BLOCKED" ? "rose" : "amber", href: `/tasks/${task.id}` }));
+  const [shared, work] = await Promise.all([getTaskAttention(actor, now), getWorkSummary(actor)]);
+  const taskAttention: ManagerAttentionItem[] = shared.map((task) => ({ id: task.id, title: task.name, meta: `${task.client} · Assigned by ${work.rows.find((row) => row.id === task.id)?.assignedBy ?? "teammate"} · Due ${formatDate(task.dueAt)} · ${task.reasons.join(" · ")}`, tone: task.status === "BLOCKED" ? "rose" : "amber", href: `/tasks/${task.id}` }));
   const queuedAttention = queueRows
     .filter((item) => queueStatuses.has(item.status))
     .map((item) => ({ id: `intake:${item.id}`, title: `Review intake: ${item.title ?? "Untitled request"}`, meta: `Captured ${formatDate(item.createdAt)}`, tone: "amber" as const, href: `/intake?view=queue&item=${item.id}` }));
@@ -97,6 +103,8 @@ export async function getManagerHomeData(actor: ActorContext, now = new Date()):
     counts,
     activeProjects: activeProjects.length,
     overdueTasks: overdue.length,
+    openTasks: incomplete.length,
+    dueThisWeek: incomplete.filter((task) => isDueThisWeek(task.dueAt, now, orgRows[0]?.timezone ?? "Asia/Kolkata")).length,
     clientReviewTasks: clientReview.length,
     projects: projectData,
     attention: [...await getDiscussionAttention(actor), ...taskAttention, ...queuedAttention, ...setupAttention],
