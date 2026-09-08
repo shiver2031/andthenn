@@ -58,7 +58,7 @@ export class PgmqJobQueue implements JobQueue {
 
   async health() {
     const rows = await this.sql<Array<{ queue_name: string; queue_length: number; oldest_msg_age_sec: number | null }>>`
-      select queue_name, queue_length::int, extract(epoch from oldest_msg_age_sec)::int as oldest_msg_age_sec
+      select queue_name, queue_length::int, oldest_msg_age_sec::int as oldest_msg_age_sec
       from pgmq.metrics_all()
     `;
     return { queues: rows.map((row) => ({ name: row.queue_name, depth: row.queue_length, oldestSeconds: row.oldest_msg_age_sec })) };

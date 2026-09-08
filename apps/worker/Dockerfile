@@ -4,12 +4,11 @@ WORKDIR /workspace
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @andthenn/worker... build
-RUN pnpm --filter @andthenn/worker --prod deploy /opt/worker
 
 FROM node:22-alpine AS runtime
-ENV NODE_ENV=production
-WORKDIR /app
-COPY --from=build /opt/worker ./
+ENV NODE_ENV=production PORT=8080
+WORKDIR /workspace
+# The locked TS loader handles the existing workspace packages' extensionless ESM imports.
+COPY --from=build /workspace ./
 EXPOSE 8080
-ENV PORT=8080
-CMD ["node", "dist/index.js"]
+CMD ["node", "--import", "tsx", "apps/worker/src/index.ts"]

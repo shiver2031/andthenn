@@ -1,4 +1,6 @@
-import { GmailIntakeAdapter, MetaWhatsAppAdapter, PgmqJobQueue, SupabaseS3Storage } from "@andthenn/adapters";
+import { GmailIntakeAdapter, LocalFilesystemStorage, MetaWhatsAppAdapter, PgmqJobQueue, SupabaseS3Storage } from "@andthenn/adapters";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import postgres from "postgres";
 import { createHandlers } from "./handlers.js";
@@ -24,7 +26,8 @@ const organizationId = process.env.ORGANIZATION_ID;
 const gmail = organizationId && process.env.GOOGLE_WORKSPACE_INTAKE_EMAIL && process.env.GOOGLE_PUBSUB_TOPIC
   ? new GmailIntakeAdapter({ delegatedUser: process.env.GOOGLE_WORKSPACE_INTAKE_EMAIL, pubsubTopic: process.env.GOOGLE_PUBSUB_TOPIC, ...(process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? { credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON) as Record<string, unknown> } : {}) })
   : null;
-const storage = process.env.SUPABASE_S3_ENDPOINT && process.env.SUPABASE_S3_ACCESS_KEY_ID && process.env.SUPABASE_S3_SECRET_ACCESS_KEY && process.env.SUPABASE_STORAGE_BUCKET
+const prototype = process.env.APP_RUNTIME === "prototype" && ["localhost", "127.0.0.1"].includes(new URL(process.env.APP_URL ?? "http://invalid").hostname);
+const storage = prototype ? new LocalFilesystemStorage() : process.env.SUPABASE_S3_ENDPOINT && process.env.SUPABASE_S3_ACCESS_KEY_ID && process.env.SUPABASE_S3_SECRET_ACCESS_KEY && process.env.SUPABASE_STORAGE_BUCKET
   ? new SupabaseS3Storage({ endpoint: process.env.SUPABASE_S3_ENDPOINT, accessKeyId: process.env.SUPABASE_S3_ACCESS_KEY_ID, secretAccessKey: process.env.SUPABASE_S3_SECRET_ACCESS_KEY, bucket: process.env.SUPABASE_STORAGE_BUCKET, region: process.env.SUPABASE_S3_REGION ?? "ap-south-1" }) : null;
 const whatsapp = process.env.META_WHATSAPP_APP_SECRET && process.env.META_WHATSAPP_ACCESS_TOKEN && process.env.META_WHATSAPP_PHONE_NUMBER_ID
   ? new MetaWhatsAppAdapter({ appSecret: process.env.META_WHATSAPP_APP_SECRET, accessToken: process.env.META_WHATSAPP_ACCESS_TOKEN, phoneNumberId: process.env.META_WHATSAPP_PHONE_NUMBER_ID }) : null;
@@ -82,8 +85,14 @@ const handlers = createHandlers({
     throw new Error("Unsupported intake job payload");
   },
   processMedia: async (id) => {
-    if (!storage || !process.env.MEDIA_INSPECTION_URL) throw new Error("Storage and MEDIA_INSPECTION_URL are required for media processing");
+    if (!storage) throw new Error("Storage is required for media processing");
     await processMediaVersion(sql, storage, id, async (input) => {
+      if (prototype && process.env.PROTOTYPE_FIXTURE_INSPECTION === "1") {
+        const encoded = await readFile(new URL("../../../packages/db/fixtures/prototype-review.mp4.base64", import.meta.url), "utf8");
+        const hash = createHash("sha256").update(Buffer.from(encoded.trim(), "base64")).digest("hex");
+        if (input.checksumSha256 === hash) return { clean: true, detectedContentType: "video/mp4", metadata: { inspection: "bundled-test-fixture-only" } };
+      }
+      if (!process.env.MEDIA_INSPECTION_URL) throw new Error("MEDIA_INSPECTION_URL is required; only the bundled fixture can be inspected locally");
       const response = await fetch(process.env.MEDIA_INSPECTION_URL!, { method: "POST", headers: { "content-type": "application/json", ...(process.env.MEDIA_INSPECTION_TOKEN ? { authorization: `Bearer ${process.env.MEDIA_INSPECTION_TOKEN}` } : {}) }, body: JSON.stringify(input) });
       if (!response.ok) throw new Error(`Media inspection service failed (${response.status})`);
       return await response.json() as import("./media.js").MediaInspection;
@@ -151,7 +160,7 @@ const healthServer = createServer((request, response) => {
 
 await new Promise<void>((resolve, reject) => {
   healthServer.once("error", reject);
-  healthServer.listen(port, "0.0.0.0", () => {
+  healthServer.listen(port, prototype ? "127.0.0.1" : "0.0.0.0", () => {
     healthServer.off("error", reject);
     resolve();
   });

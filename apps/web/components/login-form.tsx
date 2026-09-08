@@ -12,15 +12,6 @@ export function LoginForm({ prototype = false }: { prototype?: boolean }) {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function prototypeLogin(persona: "manager" | "employee" | "temporary" | "expired") {
-    setBusy(true); setMessage(null);
-    try {
-      const response = await fetch("/api/prototype/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ persona }) });
-      const result = await response.json() as { error?: string; redirectTo?: string };
-      if (!response.ok) setMessage(result.error ?? "Unable to start the prototype session."); else location.assign(result.redirectTo ?? "/home");
-    } catch { setMessage("The local prototype session could not be started. Retry this action."); } finally { setBusy(false); }
-  }
-
   async function googleLogin() {
     setBusy(true); setMessage(null);
     try {
@@ -46,8 +37,8 @@ export function LoginForm({ prototype = false }: { prototype?: boolean }) {
   if (prototype) return <div className="mt-8 space-y-3" aria-describedby="prototype-note">
     <p id="prototype-note" className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-100">Prototype personas use an HttpOnly local session. External identity and provider connections are simulated.</p>
     {([[
-      "manager", "Manager", "Full workflow, commercial and prototype tools",
-    ], ["employee", "Employee", "Project and delivery workflow"], ["temporary", "Temporary collaborator", "Assigned work only"], ["expired", "Expired temporary", "Demonstrates the expiry boundary"]] as const).map(([persona, title, detail]) => (
+      "founder", "Founder", "Company view, approvals and Accounts",
+    ], ["manager", "Manager", "Today's work, clients and team"], ["designer", "Designer", "Assigned work and review"], ["temporary", "Temporary Designer", "Assigned work only"], ["clientAster", "Client · Riya at Aster", "Aster projects and approved files only"], ["clientJuniper", "Client · Dev at Juniper", "Juniper projects and approved files only"], ["expired", "Expired temporary", "Demonstrates the expiry boundary"]] as const).map(([persona, title, detail]) => (
       <form key={persona} action="/api/prototype/session" method="post"><button name="persona" value={persona} className="group flex min-h-11 w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[.04] px-3 text-left transition hover:border-violet-300/60 hover:bg-white/[.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-violet-400/15 text-violet-200"><UserRound size={17}/></span><span><span className="block text-sm font-semibold text-white">{title}</span><span className="block text-xs text-zinc-400">{detail}</span></span></button></form>
     ))}
   </div>;

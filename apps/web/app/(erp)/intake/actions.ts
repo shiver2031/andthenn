@@ -1,15 +1,16 @@
 "use server";
+import { assignmentNotification } from "../../../lib/assignment-notification";
 
-import { activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, inArray, intakeConversions, intakeItems, intakeSourceItems, memberships, notifications, projectMemberships, projects, proposals, taskAssignees, tasks, workflowStages, workflows } from "@andthenn/db";
+import { sql, activityEvents, and, auditEvents, clients, createDatabase, deliverables, eq, inArray, intakeConversions, intakeItems, intakeSourceItems, memberships, notifications, organizations, projectMemberships, projects, proposals, taskAssignees, tasks, workflowStages, workflows } from "@andthenn/db";
 import { projectSetupDraftSchema, projectSetupFinalizeSchema, projectSetupSaveSchema } from "@andthenn/contracts";
-import { authorize } from "@andthenn/domain";
+import { authorize, defaultProjectPhases } from "@andthenn/domain";
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { resolveActorContext, type ActorContext } from "../../../lib/actor-context";
 import { demoModeEnabled } from "../../../lib/config";
 
-const defaultStages = ["Briefing", "In production", "Client review", "Completed"];
+const defaultStages = defaultProjectPhases;
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 const required = (form: FormData, key: string) => {
   const result = value(form, key);
@@ -22,7 +23,6 @@ async function managerOrThrow() {
   const actor = await resolveActorContext();
   if (!actor) throw new Error("Authentication required");
   authorize(actor, "intake:process");
-  if (actor.role !== "MANAGER") throw new Error("Only managers can approve intake and create projects");
   return actor;
 }
 
@@ -91,7 +91,7 @@ export async function saveProjectSetup(form: FormData) {
   const actor = await managerOrThrow();
   const input = projectSetupSaveSchema.parse({ proposalId: required(form, "proposalId"), expectedVersion: Number(required(form, "expectedVersion")), draft: JSON.parse(required(form, "draft")) });
   const { db } = createDatabase();
-  const [updated] = await db.update(proposals).set({ title: input.draft.title, brief: input.draft.brief, clientId: input.draft.clientId, budgetMinor: input.draft.budgetMinor, currency: input.draft.currency, draftData: input.draft, version: input.expectedVersion + 1, updatedAt: new Date() }).where(and(eq(proposals.id, input.proposalId), eq(proposals.organizationId, actor.organizationId), eq(proposals.status, "PENDING"), eq(proposals.version, input.expectedVersion))).returning();
+  const [updated] = await db.update(proposals).set({ title: input.draft.title, brief: input.draft.brief, clientId: input.draft.clientId || null, budgetMinor: input.draft.budgetMinor, currency: input.draft.currency, draftData: input.draft, version: input.expectedVersion + 1, updatedAt: new Date() }).where(and(eq(proposals.id, input.proposalId), eq(proposals.organizationId, actor.organizationId), eq(proposals.status, "PENDING"), eq(proposals.version, input.expectedVersion))).returning();
   if (!updated) throw new Error("This setup changed elsewhere. Refresh and continue from the latest version.");
   revalidateManagerSurfaces();
   return { version: updated.version };
@@ -108,13 +108,14 @@ export async function finalizeProjectSetup(form: FormData) {
     if (conversion?.projectId) redirect(`/projects?project=${conversion.projectId}`);
   }
   const draft = projectSetupDraftSchema.parse(existingProposal.draftData);
+  const [organization] = await db.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, actor.organizationId)).limit(1);
   const project = await db.transaction(async (tx) => {
     const [proposal] = await tx.select().from(proposals).where(and(eq(proposals.id, input.proposalId), eq(proposals.organizationId, actor.organizationId))).limit(1);
     if (!proposal || proposal.status !== "PENDING" || proposal.version !== input.expectedVersion) throw new Error("This setup changed elsewhere. Refresh and continue from the latest version.");
     const memberIds = [...new Set([draft.ownerMembershipId, ...draft.tasks.flatMap((task) => [task.primaryOwnerId, ...task.collaboratorIds])])];
     const [[client], activeMembers] = await Promise.all([
       tx.select({ id: clients.id }).from(clients).where(and(eq(clients.id, draft.clientId), eq(clients.organizationId, actor.organizationId), eq(clients.lifecycle, "ACTIVE"))).limit(1),
-      tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.status, "ACTIVE"), inArray(memberships.id, memberIds))),
+      tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.status, "ACTIVE"), sql`${memberships.role} <> 'CLIENT' and (${memberships.expiresAt} is null or ${memberships.expiresAt} > now()) and (${memberships.startsAt} is null or ${memberships.startsAt} <= now())`, inArray(memberships.id, memberIds))),
     ]);
     if (!client || activeMembers.length !== memberIds.length) throw new Error("Choose an active client and active team members before creating the project");
     const deadline = new Date(draft.deadline);
@@ -132,9 +133,10 @@ export async function finalizeProjectSetup(form: FormData) {
     const firstStage = stages.find((stage) => stage.position === 0);
     if (!firstStage) throw new Error("Project workflow could not be created");
     await tx.insert(deliverables).values(draft.deliverables.map((deliverable) => ({ id: deliverable.id, organizationId: actor.organizationId, projectId: created!.id, name: deliverable.name, quantity: deliverable.quantity, format: deliverable.format, dueAt: new Date(deliverable.dueAt), notes: deliverable.notes || null })));
-    await tx.insert(tasks).values(draft.tasks.map((task) => ({ id: task.id, organizationId: actor.organizationId, deliverableId: task.deliverableId, currentWorkflowStageId: firstStage.id, name: task.name, description: task.description, priority: task.priority, dueAt: new Date(task.dueAt), estimatedMinutes: task.estimatedMinutes })));
+    await tx.insert(tasks).values(draft.tasks.map((task) => ({ id: task.id, organizationId: actor.organizationId, deliverableId: task.deliverableId, currentWorkflowStageId: firstStage.id, name: task.name, description: task.description, priority: task.priority, dueAt: new Date(task.dueAt), estimatedMinutes: task.estimatedMinutes, requiresClientDelivery: task.requiresClientDelivery })));
     await tx.insert(taskAssignees).values(draft.tasks.flatMap((task) => [{ organizationId: actor.organizationId, taskId: task.id, membershipId: task.primaryOwnerId, kind: "PRIMARY" as const, assignedByMembershipId: actor.membershipId }, ...task.collaboratorIds.map((membershipId) => ({ organizationId: actor.organizationId, taskId: task.id, membershipId, kind: "COLLABORATOR" as const, assignedByMembershipId: actor.membershipId }))]));
-    await tx.insert(notifications).values(draft.tasks.map((task) => ({ organizationId: actor.organizationId, recipientMembershipId: task.primaryOwnerId, eventType: "task.assigned", title: "New task assigned", body: task.name, objectType: "TASK", objectId: task.id })));
+    const assignmentNotes = draft.tasks.flatMap((task) => [...new Set([task.primaryOwnerId, ...task.collaboratorIds])].filter((id) => id !== actor.membershipId).map((recipientMembershipId) => ({ organizationId: actor.organizationId, recipientMembershipId, eventType: "task.assigned", title: "New task assigned", body: assignmentNotification(actor.displayName, task, organization?.timezone), objectType: "TASK", objectId: task.id })));
+    if (assignmentNotes.length) await tx.insert(notifications).values(assignmentNotes);
     const [changedProposal] = await tx.update(proposals).set({ status: "APPROVED", decidedByMembershipId: actor.membershipId, decidedAt: new Date(), version: proposal.version + 1, updatedAt: new Date() }).where(and(eq(proposals.id, proposal.id), eq(proposals.version, input.expectedVersion))).returning();
     if (!changedProposal) throw new Error("This setup changed elsewhere. Refresh and continue from the latest version.");
     if (proposal.intakeItemId) {

@@ -1,0 +1,8 @@
+"use client";
+import { PreservingForm } from "./preserving-form";
+import { useActionState } from "react";
+import { saveRelationship } from "../app/(erp)/relationship-command";
+export function RelationshipEditor({ clientId, revision, kind, id = "", name = "", detail = "" }: { clientId: string; revision: string; kind: "client" | "brand" | "contact"; id?: string; name?: string; detail?: string }) {
+  const [state, action, pending] = useActionState(saveRelationship, {});
+  return <details className="mt-3 rounded-xl border border-zinc-200 p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{id || kind === "client" ? `Edit ${kind}: ${name}` : `Add ${kind}`}</summary><PreservingForm action={action} className="mt-2 space-y-3"><input type="hidden" name="clientId" value={clientId}/><input type="hidden" name="recordId" value={id}/><input type="hidden" name="revision" value={revision}/><input type="hidden" name="kind" value={kind}/><label className="block text-sm">Name<input required name="name" defaultValue={name} maxLength={kind === "contact" ? 160 : 240} className="control mt-1"/></label><label className="block text-sm">{kind === "contact" ? "Role" : "Notes"}<textarea name="detail" defaultValue={detail} maxLength={kind === "contact" ? 160 : 10000} className="control mt-1"/></label><button disabled={pending} className="min-h-11 rounded-xl bg-zinc-950 px-4 text-sm font-bold text-white">{pending ? "Saving…" : `Save ${kind}`}</button></PreservingForm>{state.error && <p role="alert" className="mt-2 text-sm text-rose-700">{state.error}</p>}{state.success && <p role="status" className="mt-2 text-sm text-emerald-700">{state.success}</p>}</details>;
+}

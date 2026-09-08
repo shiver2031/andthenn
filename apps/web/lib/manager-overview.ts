@@ -1,4 +1,9 @@
-import { and, clients, createDatabase, eq, intakeItems, memberships, profiles, projects, proposals, tasks, deliverables, workflowStages } from "@andthenn/db";
+import { getWorkSummary } from "./work-summary";
+import { getDiscussionAttention } from "./discussion-attention";
+import { projectHealth, isDueThisWeek, managerProjectGroup } from "./calendar";
+import { getTaskAttention } from "./task-attention";
+import type { ActorContext } from "./actor-context";
+import { and, clients, createDatabase, eq, intakeItems, memberships, profiles, projects, proposals, tasks, organizations, deliverables, workflowStages } from "@andthenn/db";
 
 const queueStatuses = new Set(["UNASSIGNED", "CLAIMED", "NEEDS_MANAGER_INPUT", "READY_FOR_DECISION"]);
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -22,6 +27,8 @@ export type ManagerHomeData = {
   counts: ManagerNavigationCounts;
   activeProjects: number;
   overdueTasks: number;
+  openTasks: number;
+  dueThisWeek: number;
   clientReviewTasks: number;
   projects: Array<{
     id: string;
@@ -30,7 +37,8 @@ export type ManagerHomeData = {
     owner: string;
     deadlineLabel: string;
     progress: number;
-    health: "On track" | "At risk";
+    group: "Active" | "At Risk" | "Delayed" | "Waiting for Client";
+    health: "On track" | "At risk" | "Blocked" | "Waiting";
   }>;
   attention: ManagerAttentionItem[];
 };
@@ -46,9 +54,10 @@ export async function getManagerNavigationCounts(organizationId: string): Promis
   return { queue, setups, actionable: queue + setups };
 }
 
-export async function getManagerHomeData(organizationId: string, now = new Date()): Promise<ManagerHomeData> {
+export async function getManagerHomeData(actor: ActorContext, now = new Date()): Promise<ManagerHomeData> {
+  const { organizationId } = actor;
   const { db } = createDatabase();
-  const [counts, projectRows, taskRows, queueRows, setupRows] = await Promise.all([
+  const [counts, projectRows, taskRows, queueRows, setupRows, orgRows] = await Promise.all([
     getManagerNavigationCounts(organizationId),
     db.select({ id: projects.id, name: projects.name, status: projects.status, deadline: projects.deadline, client: clients.name, owner: profiles.displayName })
       .from(projects)
@@ -56,7 +65,7 @@ export async function getManagerHomeData(organizationId: string, now = new Date(
       .innerJoin(memberships, eq(memberships.id, projects.ownerMembershipId))
       .innerJoin(profiles, eq(profiles.id, memberships.profileId))
       .where(eq(projects.organizationId, organizationId)),
-    db.select({ id: tasks.id, name: tasks.name, stateKind: tasks.stateKind, dueAt: tasks.dueAt, projectId: projects.id, project: projects.name, client: clients.name, stageSemantic: workflowStages.semantic })
+    db.select({ id: tasks.id, name: tasks.name, executionStatus: tasks.executionStatus, priority: tasks.priority, dueAt: tasks.dueAt, completionRequestedAt: tasks.completionRequestedAt, projectId: projects.id, project: projects.name, client: clients.name, stageSemantic: workflowStages.semantic })
       .from(tasks)
       .innerJoin(deliverables, eq(deliverables.id, tasks.deliverableId))
       .innerJoin(projects, eq(projects.id, deliverables.projectId))
@@ -67,26 +76,25 @@ export async function getManagerHomeData(organizationId: string, now = new Date(
       .from(intakeItems).where(eq(intakeItems.organizationId, organizationId)),
     db.select({ id: proposals.id, title: proposals.title, intakeItemId: proposals.intakeItemId, updatedAt: proposals.updatedAt })
       .from(proposals).where(and(eq(proposals.organizationId, organizationId), eq(proposals.status, "PENDING"))),
+    db.select({ timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, organizationId)).limit(1),
   ]);
 
   const activeProjects = projectRows.filter((project) => project.status === "ACTIVE" || project.status === "REOPENED");
-  const incomplete = taskRows.filter((task) => task.stateKind !== "COMPLETED");
+  const incomplete = taskRows.filter((task) => task.executionStatus !== "COMPLETED");
   const overdue = incomplete.filter((task) => task.dueAt < now);
   const clientReview = incomplete.filter((task) => task.stageSemantic === "CLIENT_REVIEW");
   const projectData = activeProjects.sort((a, b) => a.deadline.getTime() - b.deadline.getTime()).map((project) => {
     const projectTasks = taskRows.filter((task) => task.projectId === project.id);
-    const complete = projectTasks.filter((task) => task.stateKind === "COMPLETED").length;
-    const atRisk = projectTasks.some((task) => task.stateKind !== "COMPLETED" && task.dueAt < now);
+    const complete = projectTasks.filter((task) => task.executionStatus === "COMPLETED").length;
     return {
       id: project.id, name: project.name, client: project.client, owner: project.owner,
       deadlineLabel: formatDate(project.deadline), progress: projectTasks.length ? Math.round((complete / projectTasks.length) * 100) : 0,
-      health: atRisk ? "At risk" as const : "On track" as const,
+      group: managerProjectGroup(project.deadline, projectTasks.map((task) => ({ status: task.executionStatus, dueAt: task.dueAt, stage: task.stageSemantic === "CLIENT_REVIEW" ? "Client review" : null })), now),
+      health: projectHealth(projectTasks.map((task) => ({ status: task.executionStatus, dueAt: task.dueAt, stage: task.stageSemantic === "CLIENT_REVIEW" ? "Client review" : null })), now),
     };
   });
-  const taskAttention: ManagerAttentionItem[] = [
-    ...overdue.map((task) => ({ id: `overdue:${task.id}`, title: `Resolve overdue task: ${task.name}`, meta: `${task.client} · Due ${formatDate(task.dueAt)}`, tone: "rose" as const, href: `/projects?project=${task.projectId}&task=${task.id}` })),
-    ...clientReview.filter((task) => !overdue.some((overdueTask) => overdueTask.id === task.id)).map((task) => ({ id: `review:${task.id}`, title: `Review ${task.name}`, meta: `${task.client} · Client review`, tone: "emerald" as const, href: `/projects?project=${task.projectId}&task=${task.id}` })),
-  ];
+  const [shared, work] = await Promise.all([getTaskAttention(actor, now), getWorkSummary(actor)]);
+  const taskAttention: ManagerAttentionItem[] = shared.map((task) => ({ id: task.id, title: task.name, meta: `${task.client} · Assigned by ${work.rows.find((row) => row.id === task.id)?.assignedBy ?? "teammate"} · Due ${formatDate(task.dueAt)} · ${task.reasons.join(" · ")}`, tone: task.status === "BLOCKED" ? "rose" : "amber", href: `/tasks/${task.id}` }));
   const queuedAttention = queueRows
     .filter((item) => queueStatuses.has(item.status))
     .map((item) => ({ id: `intake:${item.id}`, title: `Review intake: ${item.title ?? "Untitled request"}`, meta: `Captured ${formatDate(item.createdAt)}`, tone: "amber" as const, href: `/intake?view=queue&item=${item.id}` }));
@@ -95,8 +103,10 @@ export async function getManagerHomeData(organizationId: string, now = new Date(
     counts,
     activeProjects: activeProjects.length,
     overdueTasks: overdue.length,
+    openTasks: incomplete.length,
+    dueThisWeek: incomplete.filter((task) => isDueThisWeek(task.dueAt, now, orgRows[0]?.timezone ?? "Asia/Kolkata")).length,
     clientReviewTasks: clientReview.length,
     projects: projectData,
-    attention: [...taskAttention, ...queuedAttention, ...setupAttention].slice(0, 3),
+    attention: [...await getDiscussionAttention(actor), ...taskAttention, ...queuedAttention, ...setupAttention],
   };
 }

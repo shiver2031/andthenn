@@ -1,3 +1,4 @@
+import { lockTaskProject } from "../../../../lib/project-lock";
 import {
   activityEvents,
   and,
@@ -173,6 +174,9 @@ export async function POST(
         .where(availableShare(token))
         .limit(1);
       if (!share) throw new Error("Share unavailable");
+      await lockTaskProject(tx, share.taskId);
+      const [currentShare] = await tx.select({ id: reviewShares.id }).from(reviewShares).where(availableShare(token)).limit(1).for("share");
+      if (!currentShare) throw new Error("Share unavailable");
       const [session] = await tx
         .select({ id: reviewerSessions.id, name: reviewerSessions.displayName })
         .from(reviewerSessions)
@@ -315,11 +319,17 @@ export async function POST(
           ),
         )
         .limit(1);
-      if (task && task.stateKind === "WORKFLOW") {
+      const [currentCycle] = await tx.execute<{ current: boolean }>(sql`select
+        exists (select 1 from task_review_selections s where s.task_id=${share.taskId}::uuid and s.file_version_id=${share.fileVersionId}::uuid)
+        and not exists (select 1 from file_approvals a where a.task_id=${share.taskId}::uuid and a.approval_kind='CLIENT' and a.reopened_at is null) as current`);
+      // Historical guest feedback stays pinned; it cannot replace a current Client decision.
+      if (task && task.stateKind === "WORKFLOW" && currentCycle?.current) {
         const changed = await tx
           .update(tasks)
           .set({
             stateKind: "CLIENT_FEEDBACK_RECEIVED",
+            executionStatus: "IN_PROGRESS",
+            completionRequestedAt: null, completionRequestedByMembershipId: null, completionReviewerMembershipId: null,
             interruptedWorkflowStageId: task.currentStageId,
             currentWorkflowStageId: null,
             version: sql`${tasks.version} + 1`,

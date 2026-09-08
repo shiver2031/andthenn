@@ -9,6 +9,8 @@ import {
   deliverables,
   eq,
   fileApprovals,
+  finalDeliveries,
+  taskReviewSelections,
   fileAssets,
   fileVersions,
   isNull,
@@ -23,7 +25,7 @@ import {
   workflowStages,
   workflows,
 } from "@andthenn/db";
-import { authorize } from "@andthenn/domain";
+import { authorize, isOperationalLeader } from "@andthenn/domain";
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { demoModeEnabled } from "../../../lib/config";
@@ -31,6 +33,7 @@ import {
   resolveActorContext,
   type ActorContext,
 } from "../../../lib/actor-context";
+import { lockActiveTask } from "../../../lib/task-transaction";
 import { hashReviewToken } from "../../../lib/security";
 
 const field = (form: FormData, name: string) =>
@@ -113,7 +116,7 @@ export async function createReviewShare(form: FormData) {
   authorize(actor, "reviews:share", {
     ...scope,
     explicitlyGranted:
-      actor.role === "MANAGER" || actor.reviewShareTaskIds.has(taskId),
+      isOperationalLeader(actor.role) || actor.reviewShareTaskIds.has(taskId),
   });
   const expiryValue = field(form, "expiresAt");
   const expiresAt = expiryValue ? new Date(expiryValue) : null;
@@ -127,6 +130,10 @@ export async function createReviewShare(form: FormData) {
   if (!["IN_APP", "EMAIL", "WHATSAPP"].includes(channel))
     throw new Error("Invalid share channel");
   const share = await db.transaction(async (tx) => {
+    const locked = await lockActiveTask(tx, actor, taskId);
+    if (locked.task.executionStatus === "COMPLETED") throw new Error("Reopen work before sharing a new review.");
+    const [clearance] = await tx.select().from(fileApprovals).innerJoin(taskReviewSelections, and(eq(taskReviewSelections.taskId, fileApprovals.taskId), eq(taskReviewSelections.fileVersionId, fileApprovals.fileVersionId))).where(and(eq(fileApprovals.taskId, taskId), eq(fileApprovals.fileVersionId, fileVersionId), eq(fileApprovals.approvalKind, "INTERNAL"), isNull(fileApprovals.reopenedAt))).limit(1);
+    if (!clearance) throw new Error("Internally clear the selected version before sharing it with the Client.");
     const [version] = await tx
       .select({ id: fileVersions.id })
       .from(fileVersions)
@@ -250,9 +257,11 @@ export async function revokeReviewShare(form: FormData) {
   authorize(actor, "reviews:share", {
     ...scope,
     explicitlyGranted:
-      actor.role === "MANAGER" || actor.reviewShareTaskIds.has(taskId),
+      isOperationalLeader(actor.role) || actor.reviewShareTaskIds.has(taskId),
   });
   await db.transaction(async (tx) => {
+    const [ownedShare] = await tx.select({ id: reviewShares.id }).from(reviewShares).innerJoin(reviewHubs, eq(reviewHubs.id, reviewShares.reviewHubId)).where(and(eq(reviewShares.id, shareId), eq(reviewShares.organizationId, actor.organizationId), eq(reviewHubs.taskId, taskId))).limit(1);
+    if (!ownedShare) throw new Error("Share not found for this task");
     const [changed] = await tx
       .update(reviewShares)
       .set({ status: "REVOKED", revokedAt: new Date(), updatedAt: new Date() })
@@ -373,6 +382,12 @@ export async function approveFileVersion(form: FormData) {
     isPrimaryOwner: actor.primaryTaskIds.has(taskId),
   });
   await db.transaction(async (tx) => {
+    const locked = await lockActiveTask(tx, actor, taskId);
+    if (!isOperationalLeader(actor.role) && locked.primary?.membershipId !== actor.membershipId) throw new Error("Review permission required.");
+    const [selection] = await tx.select().from(taskReviewSelections).where(and(eq(taskReviewSelections.taskId, taskId), eq(taskReviewSelections.fileVersionId, fileVersionId))).limit(1);
+    if (!selection) throw new Error("Select this exact version for review first.");
+    const [existing] = await tx.select().from(fileApprovals).where(and(eq(fileApprovals.taskId, taskId), eq(fileApprovals.approvalKind, "INTERNAL"), isNull(fileApprovals.reopenedAt))).limit(1);
+    if (existing) throw new Error("This version is already cleared. Select a new candidate to restart review.");
     const [version] = await tx
       .select({ id: fileVersions.id })
       .from(fileVersions)
@@ -390,10 +405,6 @@ export async function approveFileVersion(form: FormData) {
     const [changedTask] = await tx
       .update(tasks)
       .set({
-        stateKind: "COMPLETED",
-        currentWorkflowStageId: null,
-        interruptedWorkflowStageId: null,
-        completedAt: new Date(),
         version: expectedVersion + 1,
         updatedAt: new Date(),
       })
@@ -402,6 +413,7 @@ export async function approveFileVersion(form: FormData) {
           eq(tasks.id, taskId),
           eq(tasks.organizationId, actor.organizationId),
           eq(tasks.version, expectedVersion),
+          sql`${tasks.executionStatus} <> 'COMPLETED'`,
         ),
       )
       .returning({ id: tasks.id });
@@ -413,44 +425,13 @@ export async function approveFileVersion(form: FormData) {
         taskId,
         fileVersionId,
         approvedByMembershipId: actor.membershipId,
+        approvalKind: "INTERNAL", approvalSource: "INTERNAL",
         note: field(form, "note") || null,
       });
     await tx
       .update(fileVersions)
       .set({ lockedAt: new Date(), lockedReason: "APPROVED" })
-      .where(eq(fileVersions.id, fileVersionId));
-    const [delivery] = await tx
-      .select({ id: deliverables.id })
-      .from(deliverables)
-      .innerJoin(tasks, eq(tasks.deliverableId, deliverables.id))
-      .where(eq(tasks.id, taskId))
-      .limit(1);
-    if (delivery) {
-      const [remaining] = await tx
-        .select({ id: tasks.id })
-        .from(tasks)
-        .where(
-          and(
-            eq(tasks.deliverableId, delivery.id),
-            sql`${tasks.id} <> ${taskId}`,
-            sql`${tasks.stateKind} <> 'COMPLETED'`,
-          ),
-        )
-        .limit(1);
-      if (!remaining)
-        await tx
-          .update(deliverables)
-          .set({
-            status: "READY_FOR_MANAGER_CONFIRMATION",
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(deliverables.id, delivery.id),
-              sql`${deliverables.status} in ('OPEN','REOPENED')`,
-            ),
-          );
-    }
+      .where(and(eq(fileVersions.id, fileVersionId), isNull(fileVersions.lockedAt)));
     await audit(
       tx as never,
       actor,
@@ -458,7 +439,7 @@ export async function approveFileVersion(form: FormData) {
       "FILE_VERSION",
       fileVersionId,
       null,
-      { taskId, completed: true },
+      { taskId, executionCompleted: false, versionLocked: true },
     );
   });
   revalidatePath(`/tasks/${taskId}`);
@@ -466,14 +447,17 @@ export async function approveFileVersion(form: FormData) {
 
 export async function reopenFileApproval(form: FormData) {
   const actor = await actorOrThrow();
-  if (actor.role !== "MANAGER") throw new Error("Manager permission required");
+  if (!isOperationalLeader(actor.role)) throw new Error("Leadership permission required");
   const taskId = required(form, "taskId"),
     reason = required(form, "reason");
+  const expectedVersion = Number(required(form, "expectedVersion"));
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new Error("Invalid task version");
   if (reason.length < 3)
     throw new Error("A meaningful reopen reason is required");
   const { db } = createDatabase();
   const scope = await taskScope(db, actor, taskId);
   await db.transaction(async (tx) => {
+    await lockActiveTask(tx, actor, taskId);
     const [approval] = await tx
       .select()
       .from(fileApprovals)
@@ -499,6 +483,7 @@ export async function reopenFileApproval(form: FormData) {
       .orderBy(workflowStages.position)
       .limit(1);
     if (!stage) throw new Error("Project workflow has no reopen stage");
+    await tx.update(finalDeliveries).set({ withdrawnAt: new Date(), withdrawnByMembershipId: actor.membershipId, withdrawalReason: reason }).where(and(eq(finalDeliveries.taskId, taskId), isNull(finalDeliveries.withdrawnAt)));
     await tx
       .update(fileApprovals)
       .set({
@@ -506,18 +491,26 @@ export async function reopenFileApproval(form: FormData) {
         reopenedByMembershipId: actor.membershipId,
         reopenReason: reason,
       })
-      .where(eq(fileApprovals.id, approval.id));
-    await tx
+      .where(and(eq(fileApprovals.taskId, taskId), isNull(fileApprovals.reopenedAt)));
+    const [changed] = await tx
       .update(tasks)
       .set({
         stateKind: "WORKFLOW",
+        executionStatus: "IN_PROGRESS",
         currentWorkflowStageId: stage.id,
         interruptedWorkflowStageId: null,
         completedAt: null,
+        completionRequestedAt: null,
+        completionRequestedByMembershipId: null,
+        completionReviewerMembershipId: null,
+        completionConfirmedAt: null,
+        completionConfirmedByMembershipId: null,
         version: sql`${tasks.version} + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(tasks.id, taskId));
+      .where(and(eq(tasks.id, taskId), eq(tasks.version, expectedVersion)))
+      .returning({ id: tasks.id });
+    if (!changed) throw new Error("Task changed. Reload before reopening approval.");
     await tx
       .update(deliverables)
       .set({
@@ -545,6 +538,7 @@ export async function reopenFileApproval(form: FormData) {
       .set({
         status: "REOPENED",
         reopenedAt: new Date(),
+        completedAt: null,
         reopenReason: reason,
         updatedAt: new Date(),
       })
@@ -570,7 +564,7 @@ export async function reopenFileApproval(form: FormData) {
 
 export async function createAssetRight(form: FormData) {
   const actor = await actorOrThrow();
-  if (actor.role !== "MANAGER") throw new Error("Manager permission required");
+  if (!isOperationalLeader(actor.role)) throw new Error("Leadership permission required");
   const taskId = required(form, "taskId"),
     fileAssetId = required(form, "fileAssetId"),
     territory = required(form, "territory"),

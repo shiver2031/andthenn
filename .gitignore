@@ -14,3 +14,7 @@ coverage
 supabase/.temp
 playwright-report
 test-results
+
+gha-creds-*.json
+
+.playwright-mcp/

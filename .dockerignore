@@ -5,3 +5,9 @@ node_modules
 *.docx
 coverage
 .env*
+
+gha-creds-*.json
+
+.prototype
+test-results
+.playwright-mcp

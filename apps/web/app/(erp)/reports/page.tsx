@@ -2,16 +2,17 @@ import { and, createDatabase, deliverables, eq, inArray, sql, tasks, timeEntries
 import { notFound } from "next/navigation";
 import { PageHeading } from "../../../components/page-heading";
 import { resolveActorContext } from "../../../lib/actor-context";
+import { isOperationalLeader } from "@andthenn/domain";
 export default async function ReportsPage() {
-  const actor = await resolveActorContext(); if (!actor || actor.role === "TEMP_FREELANCER") notFound(); const { db } = createDatabase();
+  const actor = await resolveActorContext(); if (!actor || actor.role === "CLIENT" || actor.accountType === "TEMPORARY") notFound(); const { db } = createDatabase();
   const assignedTaskIds = [...new Set([...actor.primaryTaskIds, ...actor.collaboratorTaskIds])];
-  const taskScope = actor.role === "MANAGER"
+  const taskScope = isOperationalLeader(actor.role)
     ? eq(tasks.organizationId, actor.organizationId)
     : and(eq(tasks.organizationId, actor.organizationId), inArray(tasks.id, assignedTaskIds));
   const [[taskTotals], [timeTotals], [deliveryTotals]] = await Promise.all([
-    db.select({ total: sql<number>`count(*)::int`, completed: sql<number>`count(*) filter (where ${tasks.stateKind} = 'COMPLETED')::int`, late: sql<number>`count(*) filter (where ${tasks.completedAt} > ${tasks.dueAt})::int` }).from(tasks).where(taskScope),
+    db.select({ total: sql<number>`count(*)::int`, completed: sql<number>`count(*) filter (where ${tasks.executionStatus} = 'COMPLETED')::int`, late: sql<number>`count(*) filter (where ${tasks.completedAt} > ${tasks.dueAt})::int` }).from(tasks).where(taskScope),
     db.select({ minutes: sql<number>`coalesce(sum(${timeEntries.minutes}), 0)::int` }).from(timeEntries).innerJoin(tasks, eq(tasks.id, timeEntries.taskId)).where(taskScope),
-    actor.role === "MANAGER"
+    isOperationalLeader(actor.role)
       ? db.select({ total: sql<number>`count(*)::int`, completed: sql<number>`count(*) filter (where ${deliverables.status} = 'COMPLETED')::int` }).from(deliverables).where(eq(deliverables.organizationId, actor.organizationId))
       : db.select({ total: sql<number>`count(distinct ${deliverables.id})::int`, completed: sql<number>`count(distinct ${deliverables.id}) filter (where ${deliverables.status} = 'COMPLETED')::int` }).from(deliverables).innerJoin(tasks, eq(tasks.deliverableId, deliverables.id)).where(taskScope),
   ]);

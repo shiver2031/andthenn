@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { approvedState, assertIntakeTransition, assertProjectClosure, assertTaskTransition, assertWorkflowStageDeletion, can, calculateQuote, calculateQuoteLine, deadlineAdherence, feedbackState, isReviewShareAccessible, nextDeliverableStatus, splitGst, validateActivation, workloadSummary } from "./index";
+import { approvedState, assertIntakeTransition, assertProjectClosure, assertTaskExecutionTransition, assertTaskTransition, assertWorkflowStageDeletion, can, calculateQuote, calculateQuoteLine, deadlineAdherence, feedbackState, isReviewShareAccessible, nextDeliverableStatus, projectHealth, splitGst, validateActivation, workloadSummary } from "./index";
 import type { MembershipContext } from "./model";
 
 function membership(overrides: Partial<MembershipContext> = {}): MembershipContext {
   return {
     userId: "user-1",
     organizationId: "org-1",
-    role: "EMPLOYEE",
+    role: "DESIGNER",
     accountType: "PERMANENT",
     status: "ACTIVE",
     expiresAt: null,
@@ -14,7 +14,9 @@ function membership(overrides: Partial<MembershipContext> = {}): MembershipConte
     visibleProjectIds: new Set(["project-1"]),
     primaryTaskIds: new Set(["task-primary"]),
     collaboratorTaskIds: new Set(["task-collab"]),
+    assignedByMeTaskIds: new Set(["task-delegated"]),
     reviewShareTaskIds: new Set(["task-primary"]),
+    linkedClientIds: new Set(),
     ...overrides,
   };
 }
@@ -26,10 +28,24 @@ describe("authorization", () => {
   });
 
   it("keeps temporary accounts assignment scoped and expiry aware", () => {
-    const temp = membership({ role: "TEMP_FREELANCER", accountType: "TEMPORARY", expiresAt: new Date("2026-01-01") });
+    const temp = membership({ role: "DESIGNER", accountType: "TEMPORARY", expiresAt: new Date("2026-01-01") });
     expect(can(temp, "tasks:contribute", { taskId: "task-collab" }, new Date("2026-02-01"))).toBe(false);
     expect(can({ ...temp, expiresAt: new Date("2027-01-01") }, "tasks:contribute", { taskId: "task-collab" }, new Date("2026-02-01"))).toBe(true);
     expect(can({ ...temp, expiresAt: new Date("2027-01-01") }, "finances:view", { taskId: "task-collab" }, new Date("2026-02-01"))).toBe(false);
+  });
+
+  it("separates Founder, Manager, Designer, and Client capabilities", () => {
+    expect(can(membership({ role: "FOUNDER" }), "finances:view")).toBe(true);
+    expect(can(membership({ role: "MANAGER", financeAccess: false }), "finances:view")).toBe(false);
+    expect(can(membership({ role: "MANAGER", financeAccess: false }), "accounts:manage")).toBe(false);
+    expect(can(membership({ role: "MANAGER", financeAccess: false }), "clients:manage")).toBe(true);
+    expect(can(membership({ role: "DESIGNER" }), "clients:manage")).toBe(false);
+    expect(can(membership({ role: "MANAGER", financeAccess: true }), "accounts:manage")).toBe(true);
+    expect(can(membership({ role: "DESIGNER" }), "tasks:assign", { projectId: "project-1" })).toBe(true);
+    expect(can(membership({ role: "CLIENT", linkedClientIds: new Set(["client-1"]) }), "client:portal", { clientId: "client-1", projectId: "project-1" })).toBe(true);
+    expect(can(membership({ role: "CLIENT", linkedClientIds: new Set(["client-1"]), visibleProjectIds: new Set() }), "client:portal", { clientId: "client-1", projectId: "project-1" })).toBe(false);
+    expect(can(membership({ role: "CLIENT", linkedClientIds: new Set(["client-2"]) }), "client:portal", { clientId: "client-1", projectId: "project-1" })).toBe(false);
+    expect(can(membership({ role: "CLIENT" }), "tasks:assign", { projectId: "project-1" })).toBe(false);
   });
 
   it("does not let project visibility broaden a worker's task contribution scope", () => {
@@ -47,6 +63,12 @@ describe("intake setup", () => {
 });
 
 describe("workflow and closure", () => {
+  it("keeps execution status separate from review phase", () => {
+    expect(() => assertTaskExecutionTransition("OPEN", "IN_PROGRESS", { isPrimaryOwner: true, canOverride: false })).not.toThrow();
+    expect(() => assertTaskExecutionTransition("BLOCKED", "IN_PROGRESS", { isPrimaryOwner: false, canOverride: true })).toThrow(/reason/i);
+    expect(() => assertTaskExecutionTransition("IN_PROGRESS", "COMPLETED", { isPrimaryOwner: true, canOverride: false })).toThrow(/confirmed/i);
+    expect(projectHealth([{ executionStatus: "BLOCKED", dueAt: new Date("2026-08-09") }], new Date("2026-08-20"), new Date("2026-08-04"))).toBe("BLOCKED");
+  });
   it("moves external feedback into the reserved state without losing its prior stage", () => {
     expect(feedbackState({ kind: "WORKFLOW", stageId: "client-review" })).toEqual({
       kind: "SYSTEM",
@@ -79,6 +101,7 @@ describe("workflow and closure", () => {
   it("preserves version lineage and requires populated-stage migration", () => {
     const task = { id: "task-1", deliverableId: "del-1", state: { kind: "WORKFLOW" as const, stageId: "review" }, assignments: [{ userId: "owner", kind: "PRIMARY" as const }], hasValidFileVersion: true, selectedReviewVersionId: "version-1", approvedVersionId: null, dueAt: new Date("2026-08-09"), completedAt: null };
     expect(() => approvedState(task, { id: "version-x", taskId: "task-other", versionNumber: 1, lockedAt: null })).toThrow(/belong/i);
+    expect(approvedState(task, { id: "version-1", taskId: "task-1", versionNumber: 1, lockedAt: null })).toEqual(task.state);
     expect(() => assertWorkflowStageDeletion("review", 4)).toThrow(/migration/i);
   });
 
