@@ -41,8 +41,22 @@ test("cross-organization pages, search, exports, file bytes and forged task comm
   expect(await (await page.request.get("/api/reports/operational-export")).text()).not.toContain("Foreign confidential");
   await page.goto("/tasks/2c000000-0000-4000-8000-000000000001");
   const statusForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Update status", exact: true }) });
-  await statusForm.locator('input[name="taskId"]').evaluate((input: HTMLInputElement) => { input.value = "4c000000-0000-4000-8000-000000000001"; });
+  const originalStatus = await statusForm.getByLabel("Execution status").inputValue();
+  await statusForm.getByLabel("Execution status").selectOption("IN_PROGRESS");
   await statusForm.getByLabel(/Reason/).fill("Cross-organization attempt must fail");
+  // Forge the serialized request, not a controlled input that hydration can restore.
+  let forged = false;
+  await page.route("**/tasks/2c000000-0000-4000-8000-000000000001", async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST") return route.continue();
+    const body = request.postData() ?? "";
+    expect(body).toContain("2c000000-0000-4000-8000-000000000001");
+    forged = true;
+    await route.continue({ postData: body.replaceAll("2c000000-0000-4000-8000-000000000001", "4c000000-0000-4000-8000-000000000001") });
+  });
   await statusForm.getByRole("button", { name: "Update status", exact: true }).click();
   await expect(statusForm.getByRole("alert")).toContainText(/not found|unavailable/i);
+  expect(forged).toBe(true);
+  await page.reload();
+  await expect(statusForm.getByLabel("Execution status")).toHaveValue(originalStatus);
 });

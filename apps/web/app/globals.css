@@ -48,4 +48,5 @@ button:has(> svg:only-child), a[aria-label] { min-width: 44px; min-height: 44px;
   background-color: var(--canvas);
   background-image: radial-gradient(ellipse at 12% 12%, #e9e1ff 0, transparent 55%), radial-gradient(ellipse at 90% 85%, #dff4f5 0, transparent 55%);
 }
-.login-card { background: var(--surface); border: 1px solid var(--line); box-shadow: 0 20px 70px -35px rgba(77, 49, 128, .3); }
+.login-card { min-width: 0; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 20px 70px -35px rgba(77, 49, 128, .3); }
+.login-card button > span { min-width: 0; }

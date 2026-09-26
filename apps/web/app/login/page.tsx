@@ -7,7 +7,7 @@ export default function LoginPage() {
   const review = reviewRuntimeEnabled();
   return <main className="login-canvas grid min-h-dvh place-items-center px-4 py-8 text-[var(--ink)] sm:py-12">
     <section aria-labelledby="login-title" className="login-card w-full max-w-md rounded-3xl p-6 sm:p-8">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span aria-hidden="true" className="grid size-11 place-items-center rounded-2xl bg-violet-700 text-lg font-black text-white shadow-sm">A</span>
         <span className="display text-lg font-bold">AndThenn<span className="text-violet-700">.</span></span>
       </div>
