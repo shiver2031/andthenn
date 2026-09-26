@@ -1,5 +1,6 @@
 "use client";
 
+import { TeamChat } from "./team-chat";
 import { Button, cn } from "@andthenn/ui";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
@@ -90,6 +91,7 @@ export function AppShell({ children, actor, navCounts, unreadCount }: { children
         {hasGlobalSearch ? <button onClick={() => setSearchOpen(true)} className="flex h-10 min-w-0 max-w-lg flex-1 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-left text-sm text-zinc-600 shadow-sm hover:border-zinc-300"><Search className="shrink-0" size={17} /><span className="min-w-0 flex-1 truncate">Search tasks, projects, clients…</span><kbd className="hidden rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] text-zinc-600 sm:block">⌘ K</kbd></button> : <div className="flex-1" />}
         <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:ml-auto sm:pl-4">
           <span className="hidden items-center gap-2 sm:inline-flex"><span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-cyan-800">Prototype</span>{canCreate && <Button onClick={() => setNewOpen(true)} size="sm"><Plus size={15} /> New</Button>}</span>
+          {actor.role !== "CLIENT" && <TeamChat/>}
           <Link aria-label={unreadCount ? `Notifications, ${unreadCount} unread` : "Notifications"} href="/notifications" className="relative grid size-10 place-items-center rounded-xl text-zinc-600 hover:bg-white"><Bell size={18} />{unreadCount > 0 && <span className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-fuchsia-700 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-[#f6f5f1]">{unreadCount > 9 ? "9+" : unreadCount}</span>}</Link>
         </div>
       </header>
