@@ -6,6 +6,11 @@ test("CRM-R1 detail edits preserve the assigner and pending completion authority
   const name = `Accountability ${Date.now()}`;
   await page.getByLabel("Task name").fill(name);
   await page.getByLabel("Primary owner").selectOption({ label: "Arjun Menon · designer" });
+  const dueInput = page.getByLabel("Due date");
+  await expect(dueInput).toBeEnabled();
+  const originalDue = await dueInput.inputValue();
+  await expect(dueInput).toHaveAttribute("max", originalDue);
+  expect(await dueInput.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(true);
   await page.getByRole("button", { name: "Create task", exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\//);
   const taskUrl = page.url(), taskId = taskUrl.split("/").pop()!;
@@ -14,6 +19,7 @@ test("CRM-R1 detail edits preserve the assigner and pending completion authority
   await page.goto(taskUrl); await page.getByRole("button", { name: "Request completion", exact: true }).click();
   await expect(page.getByRole("button", { name: "Update and withdraw request", exact: true })).toBeVisible();
   await page.goto(`/projects?project=${projectUrl!.split("/").pop()}&task=${taskId}`);
+  await expect(page.getByLabel("Due date")).toHaveValue(originalDue);
   await page.getByLabel("Brief", { exact: true }).fill("Clarified the brief without changing ownership.");
   await page.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);

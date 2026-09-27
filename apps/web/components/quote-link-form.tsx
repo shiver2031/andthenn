@@ -1,4 +1,5 @@
 "use client";
+import { browserFormData } from "../lib/browser-form-data";
 
 import { Button } from "@andthenn/ui";
 import { Copy, Link2 } from "lucide-react";
@@ -15,7 +16,7 @@ export function QuoteLinkForm({ quoteVersionId }: { quoteVersionId: string }) {
     const form = event.currentTarget;
     startTransition(async () => {
       try {
-        const result = await createQuoteAcceptanceLink(new FormData(form));
+        const result = await createQuoteAcceptanceLink(browserFormData(form));
         setUrl(result.url);
         setMessage("Secure acceptance link created.");
       } catch (error) {

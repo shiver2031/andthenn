@@ -1,4 +1,5 @@
 "use client";
+import { browserFormData } from "../lib/browser-form-data";
 
 import { Badge, Button } from "@andthenn/ui";
 import {
@@ -100,7 +101,7 @@ export function TaskReviewHub({
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
+    const data = browserFormData(form);
     const file = data.get("file");
     if (!(file instanceof File) || !file.size) return;
     setBusy(true);
@@ -207,7 +208,7 @@ export function TaskReviewHub({
     setMessage("");
     startTransition(async () => {
       try {
-        const result = await createReviewShare(new FormData(form));
+        const result = await createReviewShare(browserFormData(form));
         setShareUrl(result.url);
         setMessage("Version-pinned review link created.");
         router.refresh();
@@ -225,7 +226,7 @@ export function TaskReviewHub({
     setMessage("");
     startTransition(async () => {
       try {
-        await selectTaskReviewVersion(new FormData(form));
+        await selectTaskReviewVersion(browserFormData(form));
         setMessage("Internal review version selected.");
         router.refresh();
       } catch (error) {

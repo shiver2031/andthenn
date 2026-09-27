@@ -1,5 +1,8 @@
 "use client";
 
+import { LocalDateTimeInput } from "./local-date-time-input";
+import { browserFormData } from "../lib/browser-form-data";
+
 import { Button } from "@andthenn/ui";
 import { CalendarClock, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -8,11 +11,6 @@ import { createTask } from "../app/(erp)/actions";
 
 type Member = { id: string; name: string; role: string };
 type ProjectOption = { id: string; name: string; client: string; deliverables: Array<{ id: string; name: string; dueAt: string }> };
-
-function localDateTime(value: string) {
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
 
 export function TaskCreateDialog({ projects, members, initialProjectId, initialDeliverableId }: { projects: ProjectOption[]; members: Member[]; initialProjectId?: string | undefined; initialDeliverableId?: string | undefined }) {
   const router = useRouter();
@@ -41,7 +39,7 @@ export function TaskCreateDialog({ projects, members, initialProjectId, initialD
     setError(null);
     startTransition(async () => {
       try {
-        const result = await createTask(new FormData(form));
+        const result = await createTask(browserFormData(form));
         router.push(`/tasks/${result.taskId}`);
         router.refresh();
       } catch (cause) {
@@ -57,7 +55,7 @@ export function TaskCreateDialog({ projects, members, initialProjectId, initialD
         <div className="grid gap-4 sm:grid-cols-2"><label className="text-xs font-bold text-zinc-600">Project<select name="projectId" value={projectId} onChange={(event) => changeProject(event.target.value)} className="control mt-1.5">{projects.map((item) => <option key={item.id} value={item.id}>{item.client} · {item.name}</option>)}</select></label><label className="text-xs font-bold text-zinc-600">Output<select name="deliverableId" value={deliverable?.id ?? ""} onChange={(event) => setDeliverableId(event.target.value)} required className="control mt-1.5">{project?.deliverables.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
         <label className="block text-xs font-bold text-zinc-600">Task name<input name="name" required maxLength={300} autoFocus className="control mt-1.5" placeholder="What is the next concrete action?"/></label>
         <label className="block text-xs font-bold text-zinc-600">Brief<textarea name="description" maxLength={10000} rows={3} className="control mt-1.5 resize-y" placeholder="Outcome, context, and acceptance notes"/></label>
-        <div className="grid gap-4 sm:grid-cols-3"><label className="text-xs font-bold text-zinc-600">Primary owner<select name="ownerMembershipId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)} required className="control mt-1.5">{members.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role.toLowerCase()}</option>)}</select></label><label className="text-xs font-bold text-zinc-600">Priority<select name="priority" defaultValue="NORMAL" className="control mt-1.5"><option value="LOW">Low</option><option value="NORMAL">Normal</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label className="text-xs font-bold text-zinc-600">Due date<input key={deliverable?.id} name="dueAt" type="datetime-local" required max={deliverable ? localDateTime(deliverable.dueAt) : undefined} defaultValue={deliverable ? localDateTime(deliverable.dueAt) : undefined} className="control mt-1.5"/></label></div>
+        <div className="grid gap-4 sm:grid-cols-3"><label className="text-xs font-bold text-zinc-600">Primary owner<select name="ownerMembershipId" value={ownerId} onChange={(event) => setOwnerId(event.target.value)} required className="control mt-1.5">{members.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role.toLowerCase()}</option>)}</select></label><label className="text-xs font-bold text-zinc-600">Priority<select name="priority" defaultValue="NORMAL" className="control mt-1.5"><option value="LOW">Low</option><option value="NORMAL">Normal</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><label className="text-xs font-bold text-zinc-600">Due date<LocalDateTimeInput key={deliverable?.id} name="dueAt" required max={deliverable?.dueAt} defaultValue={deliverable?.dueAt} className="control mt-1.5"/></label></div>
         <label className="block max-w-48 text-xs font-bold text-zinc-600"><span className="flex items-center gap-1"><CalendarClock size={14}/> Estimate in minutes</span><input name="estimatedMinutes" type="number" min="1" max="1000000" className="control mt-1.5" placeholder="Optional"/></label>
         <label className="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="checkbox" name="requiresClientDelivery"/>Requires Client approval and final file delivery</label>
         <fieldset><legend className="text-xs font-bold text-zinc-600">Collaborators <span className="font-normal text-zinc-400">optional</span></legend><div className="mt-2 flex flex-wrap gap-2">{collaborators.map((member) => <label key={member.id} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-600 transition hover:border-violet-300"><input name="collaboratorMembershipId" type="checkbox" value={member.id}/>{member.name}</label>)}</div></fieldset>
