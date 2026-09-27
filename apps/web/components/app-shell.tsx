@@ -43,7 +43,7 @@ function Sidebar({ close, actor, navCounts, onHelp, onProfile }: { close?: (() =
         <div className="space-y-1">{links.map(({ href, label, icon: Icon, badge: badgeKind }) => {
           const active = path === href || (href !== "/home" && path.startsWith(`${href}/`));
           const badge = badgeKind === "attention" && navCounts?.actionable ? String(navCounts.actionable) : undefined;
-          return <Link {...(close ? { onClick: close } : {})} key={href} href={href} className={cn("relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400", active ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/[.06] hover:text-white")}>
+          return <Link {...(close ? { onClick: close } : {})} key={href} href={href} className={cn("relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold transition-[background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400", active ? "bg-white/10 text-white" : "text-zinc-300 hover:bg-white/[.06] hover:text-white")}>
             <span className="contents">
             {active && <motion.span layoutId="nav-active" className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-violet-400" />}
             <Icon aria-hidden size={17} strokeWidth={active ? 2.3 : 1.8} /> <span className="flex-1">{label}</span>

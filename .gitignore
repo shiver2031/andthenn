@@ -18,3 +18,4 @@ test-results
 gha-creds-*.json
 
 .playwright-mcp/
+.vercel
