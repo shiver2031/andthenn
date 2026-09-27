@@ -23,6 +23,7 @@ test("CRM-R1 detail edits preserve the assigner and pending completion authority
   await page.getByLabel("Brief", { exact: true }).fill("Clarified the brief without changing ownership.");
   await page.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/projects\?project=[^&]+$/);
   await page.goto(taskUrl);
   await expect(page.getByText(/Assigned by Rohan Bose/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Request completion", exact: true })).toHaveCount(0);

@@ -136,6 +136,7 @@ test("CRM header 12: original assigner changes deadline and reassigns with retai
   await page.getByLabel("Primary owner").selectOption({ label: "Rohan Bose" });
   await page.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/projects\?project=[^&]+$/);
   await page.goto(taskUrl); await expect(page.getByText("Assigned by Arjun Menon", { exact: false })).toBeVisible();
   await page.goto(`/projects?project=${projectHref!.split("/").pop()}&task=${taskId}`);
   await expect(page.getByLabel("Due date")).toHaveValue(changedDue);
