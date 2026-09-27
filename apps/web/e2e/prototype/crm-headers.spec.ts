@@ -128,6 +128,7 @@ test("CRM header 12: original assigner changes deadline and reassigns with retai
   const taskUrl = page.url(), taskId = taskUrl.split("/").pop()!;
   const projectHref = await page.locator('a[href^="/projects/"]').first().getAttribute("href");
   await page.goto(`/projects?project=${projectHref!.split("/").pop()}&task=${taskId}`);
+  await expect(page.getByLabel("Due date")).toBeEnabled();
   const due = await page.getByLabel("Due date").inputValue();
   const earlier = new Date(due); earlier.setDate(earlier.getDate() - 1);
   const changedDue = `${earlier.getFullYear()}-${String(earlier.getMonth()+1).padStart(2,"0")}-${String(earlier.getDate()).padStart(2,"0")}T${due.split("T")[1]}`;
