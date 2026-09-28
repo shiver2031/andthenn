@@ -6,17 +6,30 @@ import { LoginForm } from "./login-form";
 const auth = vi.hoisted(() => ({
   signInWithOAuth: vi.fn(), signInWithPassword: vi.fn(), resetPasswordForEmail: vi.fn(),
 }));
+const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("../lib/supabase/browser", () => ({ createSupabaseBrowserClient: () => ({ auth }) }));
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
 describe("login feedback", () => {
+  it("opens a demo persona through the JSON session route without a document navigation", async () => {
+    const request = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", request);
+    render(<LoginForm prototype review/>);
+    fireEvent.click(screen.getByRole("button", { name: /Founder/ }));
+    expect(screen.getAllByRole("button", { name: /Opening workspace/ }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/home?walkthrough=start"));
+    expect(request).toHaveBeenCalledWith("/api/prototype/session", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ persona: "founder" }),
+    });
+  });
   it("shows OAuth errors and allows retry", async () => {
     auth.signInWithOAuth.mockResolvedValue({ error: { message: "Workspace access unavailable." } });
     render(<LoginForm/>);
     fireEvent.click(screen.getByRole("button", { name: /Continue with Google/ }));
     expect(await screen.findByRole("status")).toHaveProperty("textContent", "Workspace access unavailable.");
     expect((screen.getByRole("button", { name: /Continue with Google/ }) as HTMLButtonElement).disabled).toBe(false);
-    expect(auth.signInWithOAuth).toHaveBeenCalledWith({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback?next=/home` } });
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback?next=/home?walkthrough=start` } });
   });
 
   it("locks a pending password request and retains credentials after failure", async () => {

@@ -240,7 +240,7 @@ export function TaskReviewHub({
   }
 
   return (
-    <section className="surface mt-5 rounded-2xl p-5">
+    <section data-walkthrough="internal-review" className="surface mt-5 rounded-2xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest text-violet-500">
@@ -526,7 +526,7 @@ export function TaskReviewHub({
               )}
             </div>
           </div>
-          <div className="rounded-2xl border border-zinc-100 p-4">
+          <div data-walkthrough="feedback" className="rounded-2xl border border-zinc-100 p-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold">Outstanding feedback</h3>
               <span className="flex gap-1">

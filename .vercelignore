@@ -1,0 +1,16 @@
+node_modules
+.next
+.turbo
+.prototype
+test-results
+dist
+coverage
+.git
+.vercel
+.env
+.env.local
+.env.*.local
+*.log
+*.tsbuildinfo
+playwright-report
+.playwright-mcp

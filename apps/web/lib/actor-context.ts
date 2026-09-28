@@ -4,6 +4,7 @@ import { isMembershipActive } from "@andthenn/domain";
 import { assertRuntimeConfiguration, prototypeRuntimeEnabled, reviewRuntimeEnabled } from "./config";
 import { prototypePersonaFromCookies, prototypePersonas } from "./prototype";
 import { createSupabaseServerClient } from "./supabase/server";
+import { cache } from "react";
 
 export interface ActorContext extends MembershipContext {
   membershipId: string;
@@ -23,7 +24,7 @@ function jwtIssuedAt(token: string | undefined): Date | null {
 }
 
 /** Resolves the single authoritative application identity for an internal request. */
-export async function resolveActorContext(): Promise<ActorContext | null> {
+export const resolveActorContext = cache(async function resolveActorContext(): Promise<ActorContext | null> {
   assertRuntimeConfiguration();
   // Hosted review uses the same signed personas as the local prototype, but
   // resolves them against its deployed seeded database.
@@ -41,7 +42,7 @@ export async function resolveActorContext(): Promise<ActorContext | null> {
   if (error || !user) return null;
 
   return resolveDatabaseActor(user.id, jwtIssuedAt(session?.access_token));
-}
+});
 
 async function resolveDatabaseActor(userId: string, issuedAt: Date | null): Promise<ActorContext | null> {
   const { db } = createDatabase();
@@ -77,15 +78,16 @@ async function resolveDatabaseActor(userId: string, issuedAt: Date | null): Prom
   };
   if (!isMembershipActive(context) || (member.startsAt && member.startsAt > new Date()) || (member.sessionRevokedAfter && (!issuedAt || issuedAt <= member.sessionRevokedAfter))) return null;
 
+  const leader = role === "FOUNDER" || role === "MANAGER";
   const [projects, assignments, clientLinks] = await Promise.all([
-    db.select({ projectId: projectMemberships.projectId, canShareReviews: projectMemberships.canShareReviews })
+    leader ? Promise.resolve([]) : db.select({ projectId: projectMemberships.projectId, canShareReviews: projectMemberships.canShareReviews })
       .from(projectMemberships).where(and(eq(projectMemberships.organizationId, member.organizationId), eq(projectMemberships.membershipId, member.id), isNull(projectMemberships.removedAt))),
-    db.select({ taskId: taskAssignees.taskId, kind: taskAssignees.kind, membershipId: taskAssignees.membershipId, assignedByMembershipId: taskAssignees.assignedByMembershipId })
+    role === "CLIENT" ? Promise.resolve([]) : db.select({ taskId: taskAssignees.taskId, kind: taskAssignees.kind, membershipId: taskAssignees.membershipId, assignedByMembershipId: taskAssignees.assignedByMembershipId })
       .from(taskAssignees).where(and(eq(taskAssignees.organizationId, member.organizationId), isNull(taskAssignees.removedAt), sql`(${taskAssignees.membershipId} = ${member.id} or ${taskAssignees.assignedByMembershipId} = ${member.id})`)),
-    db.select({ clientId: clientMemberships.clientId }).from(clientMemberships).where(and(
+    role === "CLIENT" ? db.select({ clientId: clientMemberships.clientId }).from(clientMemberships).where(and(
       eq(clientMemberships.organizationId, member.organizationId),
       eq(clientMemberships.membershipId, member.id),
-    )),
+    )) : Promise.resolve([]),
   ]);
   for (const project of projects) visibleProjectIds.add(project.projectId);
   const shareProjectIds = projects.filter((project) => project.canShareReviews).map((project) => project.projectId);

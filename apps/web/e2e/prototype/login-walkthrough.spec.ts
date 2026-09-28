@@ -1,0 +1,59 @@
+import { expect, test } from "@playwright/test";
+
+test("walkthrough opens once per login, can replay, and respects account-wide opt-out", async ({ page, browser }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: /^Founder/ }).click();
+  const tour = page.getByRole("dialog", { name: "Founder Home" });
+  await expect(tour).toBeVisible();
+  await expect(page).toHaveURL(/\/home$/);
+  await tour.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("dialog", { name: "Needs Attention" })).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page).toHaveURL(/\/work\?view=mine$/);
+  await expect(page.getByRole("dialog", { name: "My Tasks" })).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("dialog", { name: "Needs Attention" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip this time" }).click();
+  await expect(page.getByRole("dialog", { name: "Needs Attention" })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("dialog", { name: "Founder Home" })).toHaveCount(0);
+  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: /Open profile menu/ }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: /^Founder/ }).click();
+  await expect(page.getByRole("dialog", { name: "Founder Home" })).toBeVisible();
+  await page.getByRole("button", { name: "Don’t show this again" }).click();
+  await expect(page.getByRole("dialog", { name: "Founder Home" })).toHaveCount(0);
+  const other = await browser.newContext();
+  const secondPage = await other.newPage();
+  await secondPage.goto("/login");
+  await secondPage.getByRole("button", { name: /^Founder/ }).click();
+  await expect(secondPage).toHaveURL(/\/home$/);
+  await expect(secondPage.getByRole("dialog", { name: "Founder Home" })).toHaveCount(0);
+  if (await secondPage.getByRole("button", { name: "Open navigation" }).isVisible()) await secondPage.getByRole("button", { name: "Open navigation" }).click();
+  await secondPage.getByRole("button", { name: "Help & support" }).click();
+  await secondPage.getByRole("button", { name: "Start CRM walkthrough" }).click();
+  await expect(secondPage.getByRole("dialog", { name: "Founder Home" })).toBeVisible();
+  await other.close();
+});
+
+test("walkthrough uses role-permitted steps and pauses when the next item is unavailable", async ({ page }) => {
+  await page.route("**/api/walkthrough", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ optedOut: false, resumeStepKey: null, targets: { brief: null, project: null, task: null, assignment: null, internalReview: null, clientReview: null, feedback: null, approval: null, finalDelivery: null, completed: null } }) });
+  });
+  await page.goto("/login");
+  await page.getByRole("button", { name: /^Client · Dev/ }).click();
+  await expect(page.getByRole("dialog", { name: "Client Home" })).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("dialog", { name: "Project" })).toContainText("resume here on your next login");
+  await expect(page.getByRole("dialog", { name: "Project" }).getByRole("button", { name: "Next" })).toHaveCount(0);
+  await expect.poll(async () => (await (await page.request.get("/api/walkthrough")).json()).resumeStepKey).toBe("project");
+  await page.unroute("**/api/walkthrough");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
+  await page.getByRole("button", { name: /Open profile menu/ }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: /^Client · Dev/ }).click();
+  await expect(page.getByRole("dialog", { name: "Project" })).toBeVisible();
+});

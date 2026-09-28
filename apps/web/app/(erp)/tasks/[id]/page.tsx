@@ -303,7 +303,7 @@ export default async function TaskPage({
         {actor.role !== "CLIENT" && <Link href={`/work?new=task&project=${task.projectId}&deliverable=${task.deliverableId}`} className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-700">Create related task</Link>}
       </div>
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
-        <section className="surface rounded-2xl p-5">
+        <section data-walkthrough="work" className="surface rounded-2xl p-5">
           <h2 className="display text-lg font-bold">Task brief</h2>
           <p className="mt-3 text-sm leading-7 text-zinc-600">
             {task.description || "No task brief has been added."}

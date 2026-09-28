@@ -3,9 +3,11 @@
 import { Button } from "@andthenn/ui";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../lib/supabase/browser";
 
 export function ResetPasswordForm() {
+  const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -21,11 +23,10 @@ export function ResetPasswordForm() {
     setMessage(null);
     try {
       const { error } = await createSupabaseBrowserClient().auth.updateUser({ password });
-      if (error) setMessage("This recovery link is invalid or has expired. Request another reset link.");
-      else window.location.assign("/home");
+      if (error) { setMessage("This recovery link is invalid or has expired. Request another reset link."); setBusy(false); }
+      else router.replace("/home?walkthrough=start");
     } catch {
       setMessage("Password recovery is not configured.");
-    } finally {
       setBusy(false);
     }
   }

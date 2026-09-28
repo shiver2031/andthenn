@@ -10,8 +10,8 @@ export async function POST(request: NextRequest) {
     : await request.json().then((body) => (body as { persona?: keyof typeof prototypePersonas }).persona).catch(() => null);
   if (typeof persona !== "string" || !(persona in prototypePersonas)) return NextResponse.json({ error: "Choose a valid prototype persona." }, { status: 400 });
   const response = formSubmission
-    ? NextResponse.redirect(new URL("/home", request.url), { status: 303 })
-    : NextResponse.json({ ok: true, redirectTo: "/home" });
+    ? NextResponse.redirect(new URL("/home?walkthrough=start", request.url), { status: 303 })
+    : NextResponse.json({ ok: true, redirectTo: "/home?walkthrough=start" });
   response.cookies.set(PROTOTYPE_SESSION_COOKIE, signPrototypeSession(persona as keyof typeof prototypePersonas), { httpOnly: true, sameSite: "lax", secure: reviewRuntimeEnabled() || request.nextUrl.protocol === "https:", path: "/", maxAge: 60 * 60 * 12 });
   if (reviewRuntimeEnabled()) response.cookies.set(REVIEW_PERSONA_COOKIE, persona, { httpOnly: true, sameSite: "lax", secure: true, path: "/", maxAge: 60 * 60 * 12 });
   return response;
