@@ -142,12 +142,12 @@ export function LoginWalkthrough({ role, financeAccess, replaySignal }: { role: 
   if (!step) return null;
   return <>
     {box && !notice && !error ? <>
-      <div aria-hidden="true" className="fixed left-0 right-0 top-0 z-[90] bg-zinc-950/55" style={{ height: box.top }}/>
-      <div aria-hidden="true" className="fixed left-0 z-[90] bg-zinc-950/55" style={{ top: box.top, width: box.left, height: box.height }}/>
-      <div aria-hidden="true" className="fixed right-0 z-[90] bg-zinc-950/55" style={{ top: box.top, left: box.left + box.width, height: box.height }}/>
-      <div aria-hidden="true" className="fixed bottom-0 left-0 right-0 z-[90] bg-zinc-950/55" style={{ top: box.top + box.height }}/>
+      <div aria-hidden="true" className="pointer-events-none fixed left-0 right-0 top-0 z-[90] bg-zinc-950/55" style={{ height: box.top }}/>
+      <div aria-hidden="true" className="pointer-events-none fixed left-0 z-[90] bg-zinc-950/55" style={{ top: box.top, width: box.left, height: box.height }}/>
+      <div aria-hidden="true" className="pointer-events-none fixed right-0 z-[90] bg-zinc-950/55" style={{ top: box.top, left: box.left + box.width, height: box.height }}/>
+      <div aria-hidden="true" className="pointer-events-none fixed bottom-0 left-0 right-0 z-[90] bg-zinc-950/55" style={{ top: box.top + box.height }}/>
       <div aria-hidden="true" className="fixed z-[90]" style={box}/>
-    </> : <div className="fixed inset-0 z-[90] bg-zinc-950/55" aria-hidden="true"/>}
+    </> : <div className="pointer-events-none fixed inset-0 z-[90] bg-zinc-950/55" aria-hidden="true"/>}
     {box && !notice && !error && <div aria-hidden="true" className="pointer-events-none fixed z-[100] rounded-xl border-[3px] border-violet-400 shadow-[0_0_0_4px_rgba(255,255,255,.9)]" style={box}/>}
     <section ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="walkthrough-title" aria-describedby="walkthrough-body" className="fixed bottom-3 left-3 right-3 z-[110] max-h-[55dvh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl outline-none sm:bottom-6 sm:left-auto sm:right-6 sm:w-[420px]">
       <p className="text-xs font-bold uppercase tracking-wide text-violet-700">CRM walkthrough · {index + 1} of {steps.length}</p>

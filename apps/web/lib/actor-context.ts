@@ -4,7 +4,6 @@ import { isMembershipActive } from "@andthenn/domain";
 import { assertRuntimeConfiguration, prototypeRuntimeEnabled, reviewRuntimeEnabled } from "./config";
 import { prototypePersonaFromCookies, prototypePersonas } from "./prototype";
 import { createSupabaseServerClient } from "./supabase/server";
-import { cache } from "react";
 
 export interface ActorContext extends MembershipContext {
   membershipId: string;
@@ -24,7 +23,7 @@ function jwtIssuedAt(token: string | undefined): Date | null {
 }
 
 /** Resolves the single authoritative application identity for an internal request. */
-export const resolveActorContext = cache(async function resolveActorContext(): Promise<ActorContext | null> {
+export async function resolveActorContext(): Promise<ActorContext | null> {
   assertRuntimeConfiguration();
   // Hosted review uses the same signed personas as the local prototype, but
   // resolves them against its deployed seeded database.
@@ -42,7 +41,7 @@ export const resolveActorContext = cache(async function resolveActorContext(): P
   if (error || !user) return null;
 
   return resolveDatabaseActor(user.id, jwtIssuedAt(session?.access_token));
-});
+}
 
 async function resolveDatabaseActor(userId: string, issuedAt: Date | null): Promise<ActorContext | null> {
   const { db } = createDatabase();
