@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 test.use({ actionTimeout: 15000 });
 
 async function login(page: Page, persona: string) {
-  await page.context().clearCookies(); await page.goto("/login");
+  await page.goto("/login"); await page.context().clearCookies();
   await page.getByRole("button", { name: new RegExp(`^${persona}`) }).click();
   await expect(page).toHaveURL(/\/home$/);
 }
@@ -130,7 +130,8 @@ for (const approvalMode of ["portal", "external"] as const) test(`golden brief, 
   await page.getByRole("button", { name: "Prepare closure checklist" }).click();
   for (const label of ["Final approved files verified", "Rights and releases checked", "Invoice status reviewed", "Archive destination confirmed"]) await page.getByRole("button", { name: `Verify: ${label}`, exact: true }).click();
   await page.getByRole("button", { name: "Create verified archive" }).click();
-  await expect(async () => { await page.reload(); await expect(page.getByRole("button", { name: "Close project", exact: true })).toBeVisible(); }).toPass({ timeout: 30000 });
+  await expect(page.getByText(/^Archive: (QUEUED|RUNNING|SUCCEEDED)$/)).toBeVisible({ timeout: 20000 });
+  await expect(async () => { await page.reload(); await expect(page.getByRole("button", { name: "Close project", exact: true })).toBeVisible(); }).toPass({ timeout: 60000 });
   await page.getByRole("button", { name: "Close project", exact: true }).click();
   await expect(page.getByText("Project completed and archived.")).toBeVisible();
   await page.reload(); await expect(page.getByText("Project completed and archived.")).toBeVisible();
