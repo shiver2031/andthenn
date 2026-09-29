@@ -40,11 +40,13 @@ test("project panels, file filters, and logout avoid document reloads", async ({
 
   if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Files" }).click();
+  await expect(page.locator(".fixed.inset-0.z-50.lg\\:hidden")).toHaveCount(0);
   await page.getByRole("textbox", { name: "Search files" }).fill("Aster");
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(/\/files\?q=Aster/);
   expect(await page.evaluate(() => Object.hasOwn(window, "andthennDocumentMarker"))).toBe(true);
 
+  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);

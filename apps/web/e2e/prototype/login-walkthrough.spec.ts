@@ -56,4 +56,6 @@ test("walkthrough uses role-permitted steps and pauses when the next item is una
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("button", { name: /^Client · Dev/ }).click();
   await expect(page.getByRole("dialog", { name: "Project" })).toBeVisible();
+  const completed = await page.request.post("/api/walkthrough", { data: { command: "complete" } });
+  expect(completed.ok()).toBe(true);
 });

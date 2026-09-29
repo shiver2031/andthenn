@@ -38,6 +38,8 @@ test("expired persona cannot enter the workspace", async ({ page }) => {
   await page.getByRole("button", { name: /^Expired temporary/ }).click();
   await expect(page).toHaveURL(/\/login/);
   await expect(page.getByRole("heading", { name: "Welcome to AndThenn." })).toBeVisible();
-  await page.goto("/home");
-  await expect(page).toHaveURL(/\/login/);
+  const protectedResponse = await page.request.get("/home", { maxRedirects: 0 });
+  expect(protectedResponse.status()).toBeGreaterThanOrEqual(300);
+  expect(protectedResponse.status()).toBeLessThan(400);
+  expect(protectedResponse.headers().location).toContain("/login");
 });
