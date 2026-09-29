@@ -80,10 +80,18 @@ export function LoginWalkthrough({ role, financeAccess, replaySignal }: { role: 
       return;
     }
     setNotice(null); setBox(null);
-    router.push(step.href as Route);
     let cancelled = false;
     const started = Date.now();
     const route = new URL(step.href, window.location.origin);
+    const current = new URL(window.location.href);
+    // The initial step is already the post-login home page. Its state fetch can
+    // finish after a user has begun another navigation; never pull them back to
+    // Home in that race. Later steps intentionally navigate when selected.
+    if (index === 0 && (current.pathname !== route.pathname || current.search !== route.search)) {
+      setActive(false);
+      return;
+    }
+    if (current.pathname !== route.pathname || current.search !== route.search) router.push(step.href as Route);
     const timer = window.setInterval(() => {
       if (cancelled) return;
       const current = new URL(window.location.href);
@@ -146,10 +154,10 @@ export function LoginWalkthrough({ role, financeAccess, replaySignal }: { role: 
       <div aria-hidden="true" className="pointer-events-none fixed left-0 z-[90] bg-zinc-950/55" style={{ top: box.top, width: box.left, height: box.height }}/>
       <div aria-hidden="true" className="pointer-events-none fixed right-0 z-[90] bg-zinc-950/55" style={{ top: box.top, left: box.left + box.width, height: box.height }}/>
       <div aria-hidden="true" className="pointer-events-none fixed bottom-0 left-0 right-0 z-[90] bg-zinc-950/55" style={{ top: box.top + box.height }}/>
-      <div aria-hidden="true" className="fixed z-[90]" style={box}/>
+      <div aria-hidden="true" className="pointer-events-none fixed z-[90]" style={box}/>
     </> : <div className="pointer-events-none fixed inset-0 z-[90] bg-zinc-950/55" aria-hidden="true"/>}
     {box && !notice && !error && <div aria-hidden="true" className="pointer-events-none fixed z-[100] rounded-xl border-[3px] border-violet-400 shadow-[0_0_0_4px_rgba(255,255,255,.9)]" style={box}/>}
-    <section ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="walkthrough-title" aria-describedby="walkthrough-body" className="fixed bottom-3 left-3 right-3 z-[110] max-h-[55dvh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl outline-none sm:bottom-6 sm:left-auto sm:right-6 sm:w-[420px]">
+    <section ref={dialog} tabIndex={-1} role="dialog" aria-labelledby="walkthrough-title" aria-describedby="walkthrough-body" className="fixed bottom-3 left-3 right-3 z-[110] max-h-[55dvh] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 text-zinc-900 shadow-2xl outline-none sm:bottom-6 sm:left-auto sm:right-6 sm:w-[420px]">
       <p className="text-xs font-bold uppercase tracking-wide text-violet-700">CRM walkthrough · {index + 1} of {steps.length}</p>
       <h2 id="walkthrough-title" className="mt-2 text-xl font-bold">{step.title}</h2>
       <p id="walkthrough-body" className="mt-2 text-sm leading-6 text-zinc-700">{notice ?? step.body}</p>

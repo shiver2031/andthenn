@@ -17,6 +17,7 @@ test("login and primary navigation keep the browser document for every active pe
     await expect(page).toHaveURL(/\/home$/);
     await expect(page.locator("main")).toBeVisible();
     expect(await page.evaluate(() => Object.hasOwn(window, "andthennDocumentMarker"))).toBe(true);
+    if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
     await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: persona.destination }).click();
     await expect(page).toHaveURL(persona.destination === "My Projects" ? /\/projects$/ : /\/work$/);
     expect(await page.evaluate(() => Object.hasOwn(window, "andthennDocumentMarker"))).toBe(true);
@@ -37,6 +38,7 @@ test("project panels, file filters, and logout avoid document reloads", async ({
   await expect(page.locator('aside[role="dialog"]')).toHaveCount(0);
   expect(await page.evaluate(() => Object.hasOwn(window, "andthennDocumentMarker"))).toBe(true);
 
+  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Files" }).click();
   await page.getByRole("textbox", { name: "Search files" }).fill("Aster");
   await page.getByRole("button", { name: "Apply" }).click();
