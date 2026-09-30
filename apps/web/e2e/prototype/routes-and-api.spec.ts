@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 async function signIn(page: import("@playwright/test").Page, persona: "founder" | "manager" | "employee" | "temporary" | "clientA" | "clientB" = "manager") {
-  await page.goto("/login");
+  await page.goto("about:blank");
   await page.context().clearCookies();
+  await page.goto("/login");
   const names = { founder: /^Founder/, manager: /^Manager/, employee: /^Designer/, temporary: /^Temporary Designer/, clientA: /^Client · Riya/, clientB: /^Client · Dev/ };
   await page.getByRole("button", { name: names[persona] }).click();
   await expect(page).toHaveURL(/\/home$/);

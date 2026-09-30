@@ -28,7 +28,7 @@ test("self-assigned work requires an independent reviewer and simultaneous confi
   await page.getByRole("button", { name: "Request completion", exact: true }).click();
   await expect(page.getByRole("button", { name: "Update and withdraw request" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm completion", exact: true })).toHaveCount(0);
-  await page.goto("/login"); await context.clearCookies(); await page.getByRole("button", { name: /^Manager/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("about:blank"); await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Manager/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto(taskUrl); const other = await context.newPage(); await other.goto(taskUrl);
   await page.locator("form").filter({ has: page.getByRole("button", { name: "Confirm completion", exact: true }) }).getByPlaceholder("Explain the decision").fill("Independent review of self-assigned work.");
   await other.locator("form").filter({ has: other.getByRole("button", { name: "Confirm completion", exact: true }) }).getByPlaceholder("Explain the decision").fill("Independent review of self-assigned work.");

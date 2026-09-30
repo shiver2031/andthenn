@@ -26,7 +26,11 @@ jobs:
 
   acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium-375, chromium-768, chromium-1024, chromium-1440, webkit-375, webkit-1440]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -38,11 +42,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium webkit
-      - run: pnpm acceptance:prototype
+      - run: pnpm acceptance:prototype ${{ matrix.browser }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-acceptance-evidence
+          name: browser-acceptance-evidence-${{ matrix.browser }}
           path: test-results/
 
   infrastructure:

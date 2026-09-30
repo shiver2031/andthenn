@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 test.use({ actionTimeout: 15000 });
 
 async function login(page: Page, persona: string) {
-  await page.goto("/login"); await page.context().clearCookies();
+  await page.goto("about:blank"); await page.context().clearCookies(); await page.goto("/login");
   await page.getByRole("button", { name: new RegExp(`^${persona}`) }).click();
   await expect(page).toHaveURL(/\/home$/);
 }

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 async function login(page: Page, persona: string) {
-  await page.goto("/login"); await page.context().clearCookies();
+  await page.goto("about:blank"); await page.context().clearCookies(); await page.goto("/login");
   await page.getByRole("button", { name: new RegExp(`^${persona}`) }).click();
   await expect(page).toHaveURL(/\/home$/);
 }

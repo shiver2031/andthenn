@@ -16,13 +16,13 @@ test("CRM role Homes, zero-project client search, project discussion and Client 
   await discussion.getByRole("button", { name: "Post comment", exact: true }).click();
   await expect(discussion.getByText(body, { exact: true })).toBeVisible();
   await page.reload(); await expect(discussion.getByText(body, { exact: true })).toBeVisible();
-  await page.goto("/login"); await context.clearCookies(); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("about:blank"); await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
   for (const name of ["Due Today", "Due Tomorrow", "Upcoming", "Waiting for Feedback"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   await page.goto("/notifications");
   const notification = page.locator("article").filter({ hasText: body });
   await notification.getByRole("link", { name: "Open item" }).click();
   await expect(page).toHaveURL(/\/projects\/.*#comment-/);
-  await page.goto("/login"); await context.clearCookies(); await page.getByRole("button", { name: /^Client · Riya/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("about:blank"); await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Client · Riya/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto("/projects"); await page.getByRole("link", { name: /Aster/ }).click();
   await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+$/);
   expect(await page.locator("#discussion").count()).toBe(0);

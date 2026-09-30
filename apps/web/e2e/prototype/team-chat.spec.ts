@@ -52,6 +52,6 @@ test("CRM header 9: team chat exchanges persistent messages, refreshes, mentions
     await other.keyboard.press("Escape"); await other.goto("/notifications");
     await expect(other.locator("article").filter({ hasText: body })).toContainText("Arjun Menon mentioned you");
   } finally { await otherContext.close(); }
-  await page.context().clearCookies(); await login(page, "Client · Riya");
+  await page.goto("about:blank"); await page.context().clearCookies(); await login(page, "Client · Riya");
   await expect(page.getByRole("button", { name: "Open team discussion" })).toHaveCount(0);
 });
