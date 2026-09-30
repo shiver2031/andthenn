@@ -66,6 +66,7 @@ export function TaskReviewHub({
   taskVersion,
   activeApproval,
   selectedReviewVersionId,
+  clearedReviewVersionId,
   assets,
   shares,
   comments,
@@ -78,6 +79,7 @@ export function TaskReviewHub({
   taskVersion: number;
   activeApproval: { id: string; fileVersionId: string } | null;
   selectedReviewVersionId: string | null;
+  clearedReviewVersionId: string | null;
   assets: Asset[];
   shares: Share[];
   comments: Comment[];
@@ -89,7 +91,9 @@ export function TaskReviewHub({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [shareError, setShareError] = useState("");
   const [shareUrl, setShareUrl] = useState("");
+  const [shareChannel, setShareChannel] = useState("IN_APP");
   const [localPending, localTransition] = useTransition();
   const mutation = useTaskMutation();
   const pending = mutation?.pending ?? localPending;
@@ -97,6 +101,7 @@ export function TaskReviewHub({
   const readyVersions = assets
     .flatMap((asset) => asset.versions)
     .filter((version) => version.processingStatus === "READY");
+  const shareableVersion = readyVersions.find((version) => version.id === selectedReviewVersionId && version.id === clearedReviewVersionId);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -206,14 +211,17 @@ export function TaskReviewHub({
     event.preventDefault();
     const form = event.currentTarget;
     setMessage("");
+    setShareError("");
+    setShareUrl("");
     startTransition(async () => {
       try {
         const result = await createReviewShare(browserFormData(form));
+        if (result.error || !result.url) { setShareError(result.error ?? "Unable to create the review link."); return; }
         setShareUrl(result.url);
-        setMessage("Version-pinned review link created.");
+        setMessage(shareChannel === "IN_APP" ? "Review link created. Copy it to share." : "Review link created. Delivery is queued.");
         router.refresh();
       } catch (error) {
-        setMessage(
+        setShareError(
           error instanceof Error ? error.message : "Unable to create share",
         );
       }
@@ -416,53 +424,50 @@ export function TaskReviewHub({
             >
               <h3 className="text-sm font-bold">Create pinned review share</h3>
               <input type="hidden" name="taskId" value={taskId} />
-              <select
-                name="fileVersionId"
-                required
-                className="mt-3 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
-              >
-                <option value="">Choose ready version</option>
-                {readyVersions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    V{version.versionNumber} · {version.filename}
-                  </option>
-                ))}
-              </select>
+              {shareableVersion ? <>
+                <input type="hidden" name="fileVersionId" value={shareableVersion.id} />
+                <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">Ready to share: V{shareableVersion.versionNumber} · {shareableVersion.filename}</p>
+              </> : <p role="status" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{!readyVersions.length ? "Upload a file and wait until processing is ready." : !selectedReviewVersionId ? "Select a ready version for Internal review first." : !clearedReviewVersionId ? "Clear the selected version for Client review before creating a link." : "The selected version is not ready to share."}</p>}
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <select
                   name="channel"
+                  value={shareChannel}
+                  onChange={(event) => setShareChannel(event.target.value)}
                   className="h-11 rounded-xl border border-zinc-200 px-3 text-sm"
                 >
                   <option value="IN_APP">Copy link</option>
                   <option value="EMAIL">Send email</option>
                   <option value="WHATSAPP">Send WhatsApp</option>
                 </select>
-                <input
+                {shareChannel !== "IN_APP" && <input
                   name="recipient"
+                  required
+                  type={shareChannel === "EMAIL" ? "email" : "tel"}
                   maxLength={320}
                   placeholder="Recipient email or number"
                   className="h-11 rounded-xl border border-zinc-200 px-3 text-sm"
-                />
+                />}
                 <input
                   name="expiresAt"
                   type="datetime-local"
                   className="h-11 rounded-xl border border-zinc-200 px-3 text-sm"
                 />
-                <textarea
+                {shareChannel !== "IN_APP" && <textarea
                   name="message"
+                  required
                   maxLength={4000}
                   placeholder="Editable share message"
                   className="min-h-20 rounded-xl border border-zinc-200 p-3 text-sm sm:col-span-2"
-                />
+                />}
                 <label className="flex min-h-11 items-center gap-2 text-xs">
                   <input name="downloadAllowed" type="checkbox" /> Allow
                   download
                 </label>
                 <Button
                   type="submit"
-                  disabled={pending || !readyVersions.length}
+                  disabled={pending || !shareableVersion}
                 >
-                  <Link2 size={16} /> Share version
+                  <Link2 size={16} /> {shareChannel === "IN_APP" ? "Create review link" : "Send review link"}
                 </Button>
               </div>
               {shareUrl && (
@@ -474,7 +479,7 @@ export function TaskReviewHub({
                   />
                   <button
                     type="button"
-                    onClick={() => void navigator.clipboard.writeText(shareUrl)}
+                    onClick={() => void navigator.clipboard.writeText(shareUrl).then(() => setMessage("Review link copied.")).catch(() => setShareError("Copy failed. Select and copy the link shown here."))}
                     className="grid size-11 place-items-center rounded-xl bg-white"
                     aria-label="Copy review link"
                   >
@@ -482,6 +487,7 @@ export function TaskReviewHub({
                   </button>
                 </div>
               )}
+              {shareError && <p role="alert" className="mt-3 text-sm text-rose-700">{shareError}</p>}
             </form>
           )}
           <div className="rounded-2xl border border-zinc-100 p-4">

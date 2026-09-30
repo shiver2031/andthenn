@@ -12,6 +12,10 @@ test("CRM F2/F7 role dashboards and explicit Manager finance permission", async 
   for (const name of ["Open Tasks", "Due This Week"]) await expect(page.getByText(name, { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Project health", exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("founder-home.png"), fullPage: true });
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath("founder-home-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/team");
   const manager = page.locator("article").filter({ hasText: "Rohan Bose" });
   await manager.getByRole("button", { name: "Grant finance access" }).click();

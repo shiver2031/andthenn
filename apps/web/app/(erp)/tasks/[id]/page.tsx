@@ -38,7 +38,7 @@ import { TaskExecutionControls } from "../../../../components/task-execution-con
 import { resolveActorContext } from "../../../../lib/actor-context";
 import { TaskReviewHub } from "../../../../components/task-review-hub";
 import { taskMentionScope } from "../../../../lib/task-mention-scope";
-import { isOperationalLeader } from "@andthenn/domain";
+import { can, isOperationalLeader } from "@andthenn/domain";
 import { TaskDiscussion } from "../../../../components/task-discussion";
 import { canReadTask, isResourceId } from "../../../../lib/resource-access";
 
@@ -246,6 +246,7 @@ export default async function TaskPage({
       .select({
         id: fileApprovals.id,
         fileVersionId: fileApprovals.fileVersionId,
+        approvalKind: fileApprovals.approvalKind,
       })
       .from(fileApprovals)
       .where(
@@ -254,8 +255,7 @@ export default async function TaskPage({
           eq(fileApprovals.organizationId, actor.organizationId),
           isNull(fileApprovals.reopenedAt),
         ),
-      )
-      .limit(1),
+      ),
   ]);
   const assets = assetRows.map((asset) => ({
     ...asset,
@@ -376,11 +376,12 @@ export default async function TaskPage({
         taskVersion={task.version}
         activeApproval={approvalRows[0] ?? null}
         selectedReviewVersionId={selectionRows[0]?.fileVersionId ?? null}
+        clearedReviewVersionId={approvalRows.find((approval) => approval.approvalKind === "INTERNAL" && approval.fileVersionId === selectionRows[0]?.fileVersionId)?.fileVersionId ?? null}
         assets={assets}
         shares={shares}
         comments={commentRows}
         rights={rightRows}
-        canShare={isOperationalLeader(actor.role) || actor.primaryTaskIds.has(id) || actor.collaboratorTaskIds.has(id)}
+        canShare={task.executionStatus !== "COMPLETED" && can(actor, "reviews:share", { taskId: id, projectId: task.projectId })}
         canApprove={isOperationalLeader(actor.role) || actor.primaryTaskIds.has(id)}
         canManageRights={isOperationalLeader(actor.role)}
       />

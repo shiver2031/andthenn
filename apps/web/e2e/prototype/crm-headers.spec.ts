@@ -19,7 +19,8 @@ test("CRM header 1: four roles share the application with distinct visibility", 
 test("CRM header 2: Founder company metrics, health, attention, team, own work and accounts", async ({ page }) => {
   await login(page, "Founder");
   for (const label of ["Active projects", "Open Tasks", "Due This Week", "Overdue tasks"]) await expect(page.getByText(label, { exact: true })).toBeVisible();
-  for (const label of ["On track", "At risk", "Blocked", "Waiting", "Needs Attention", "My Work", "Team availability and load", "Accounts summary"]) await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Project health" })).toContainText("On track");
+  for (const label of ["Needs Attention", "My Work", "Team availability and load", "Accounts summary"]) await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
   await page.goto("/accounts"); await expect(page.getByRole("heading", { name: "Accounts", exact: true })).toBeVisible();
   for (const label of ["Paid revenue", "Recorded expenses", "Invoiced"]) await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
 });

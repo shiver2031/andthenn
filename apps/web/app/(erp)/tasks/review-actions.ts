@@ -28,7 +28,7 @@ import {
 import { authorize, isOperationalLeader } from "@andthenn/domain";
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { demoModeEnabled } from "../../../lib/config";
+import { applicationOrigin, demoModeEnabled, isLoopbackOrigin, prototypeRuntimeEnabled } from "../../../lib/config";
 import {
   resolveActorContext,
   type ActorContext,
@@ -108,7 +108,29 @@ async function audit(
 }
 
 export async function createReviewShare(form: FormData) {
+  try {
+    return { ...await createReviewShareUnchecked(form), error: null };
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "";
+    const expected = [
+      "Review links are unavailable until the application URL is configured.",
+      "Expiry must be in the future",
+      "Invalid share channel",
+      "Enter a recipient and message to send the link.",
+      "Enter a valid recipient email.",
+      "Enter a valid WhatsApp number with country code.",
+      "Reopen work before sharing a new review.",
+      "Internally clear the selected version before sharing it with the Client.",
+      "Only a ready version belonging to this task can be shared",
+    ];
+    return { id: null, url: null, error: expected.includes(message) ? message : "Unable to create the review link. Please try again." };
+  }
+}
+
+async function createReviewShareUnchecked(form: FormData) {
   const actor = await actorOrThrow();
+  const configuredOrigin = applicationOrigin() ?? (prototypeRuntimeEnabled() && isLoopbackOrigin(process.env.APP_URL ?? null) ? new URL(process.env.APP_URL!).origin : null);
+  if (!configuredOrigin) throw new Error("Review links are unavailable until the application URL is configured.");
   const taskId = required(form, "taskId"),
     fileVersionId = required(form, "fileVersionId");
   const { db } = createDatabase();
@@ -129,6 +151,11 @@ export async function createReviewShare(form: FormData) {
   const channel = field(form, "channel") || "IN_APP";
   if (!["IN_APP", "EMAIL", "WHATSAPP"].includes(channel))
     throw new Error("Invalid share channel");
+  const recipient = field(form, "recipient") || null;
+  const message = field(form, "message") || null;
+  if (channel !== "IN_APP" && (!recipient || !message)) throw new Error("Enter a recipient and message to send the link.");
+  if (channel === "EMAIL" && recipient && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new Error("Enter a valid recipient email.");
+  if (channel === "WHATSAPP" && recipient && !/^\+?[1-9]\d{6,14}$/.test(recipient)) throw new Error("Enter a valid WhatsApp number with country code.");
   const share = await db.transaction(async (tx) => {
     const locked = await lockActiveTask(tx, actor, taskId);
     if (locked.task.executionStatus === "COMPLETED") throw new Error("Reopen work before sharing a new review.");
@@ -166,15 +193,6 @@ export async function createReviewShare(form: FormData) {
       )
       .limit(1);
     if (!hub) throw new Error("Unable to create review hub");
-    const recipient = field(form, "recipient") || null,
-      message = field(form, "message") || null;
-    if (
-      (channel === "EMAIL" || channel === "WHATSAPP") &&
-      (!recipient || !message)
-    )
-      throw new Error(
-        "A recipient and message are required for provider delivery",
-      );
     const [created] = await tx
       .insert(reviewShares)
       .values({
@@ -205,7 +223,7 @@ export async function createReviewShare(form: FormData) {
             channel,
             recipient,
             message,
-            reviewUrl: `${process.env.APP_URL ?? "http://localhost:3000"}/review/${token}`,
+            reviewUrl: `${configuredOrigin}/review/${token}`,
             subject: `Review requested: ${scope.taskId}`,
           },
           idempotencyKey: `review.share.deliver:${created!.id}`,
@@ -244,7 +262,7 @@ export async function createReviewShare(form: FormData) {
   revalidatePath(`/tasks/${taskId}`);
   return {
     id: share.id,
-    url: `${process.env.APP_URL ?? "http://localhost:3000"}/review/${token}`,
+    url: `${configuredOrigin}/review/${token}`,
   };
 }
 

@@ -18,7 +18,7 @@ describe("login feedback", () => {
     render(<LoginForm prototype review/>);
     fireEvent.click(screen.getByRole("button", { name: /Founder/ }));
     expect(screen.getAllByRole("button", { name: /Opening workspace/ }).every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/home?walkthrough=start"));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/home"));
     expect(request).toHaveBeenCalledWith("/api/prototype/session", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ persona: "founder" }),
     });
@@ -29,7 +29,7 @@ describe("login feedback", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue with Google/ }));
     expect(await screen.findByRole("status")).toHaveProperty("textContent", "Workspace access unavailable.");
     expect((screen.getByRole("button", { name: /Continue with Google/ }) as HTMLButtonElement).disabled).toBe(false);
-    expect(auth.signInWithOAuth).toHaveBeenCalledWith({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback?next=/home?walkthrough=start` } });
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback?next=/home` } });
   });
 
   it("locks a pending password request and retains credentials after failure", async () => {

@@ -65,6 +65,9 @@ for (const approvalMode of ["portal", "external"] as const) test(`golden brief, 
   async function share(version: number) {
     await login(page, "Manager"); await page.goto(taskUrl);
     const versionId = await page.locator('form').filter({ has: page.getByRole("heading", { name: "Internal review candidate" }) }).locator("select").inputValue();
+    const form = page.locator("form").filter({ has: page.getByRole("heading", { name: "Create pinned review share" }) });
+    await expect(form.getByRole("button", { name: "Create review link" })).toBeDisabled();
+    await expect(form).toContainText("Clear the selected version for Client review");
     await page.getByRole("button", { name: "Clear for Client review", exact: true }).click();
     await expect(page.getByText("Cleared for Client review. Client approval and delivery are still required.", { exact: true })).toBeVisible();
     const clientContext = await browser.newContext();
@@ -72,10 +75,21 @@ for (const approvalMode of ["portal", "external"] as const) test(`golden brief, 
     await login(clientPage, "Client · Riya");
     expect((await clientPage.request.get(`/api/files/${versionId}`)).status()).toBe(404);
     await clientContext.close();
-    const form = page.locator("form").filter({ has: page.getByRole("heading", { name: "Create pinned review share" }) });
-    await form.locator('[name="fileVersionId"]').selectOption({ label: `V${version} · golden-v${version}.mp4` });
-    await form.getByRole("button", { name: "Share version" }).click();
+    await expect(form).toContainText(`Ready to share: V${version} · golden-v${version}.mp4`);
+    await form.locator('[name="expiresAt"]').fill("2020-01-01T00:00");
+    await form.getByRole("button", { name: "Create review link" }).click();
+    await expect(form.getByRole("alert")).toContainText("Expiry must be in the future");
+    await form.locator('[name="expiresAt"]').fill("");
+    await form.getByRole("button", { name: "Create review link" }).click();
     await expect(page.getByRole("button", { name: "Copy review link" })).toBeVisible();
+    const url = await form.locator('input[readonly]').inputValue();
+    expect(new URL(url).origin).toBe(new URL(page.url()).origin);
+    const guest = await browser.newContext();
+    const guestPage = await guest.newPage();
+    await guestPage.goto(url);
+    await expect(guestPage.getByRole("heading", { name: "Feedback" })).toBeVisible();
+    await expect(guestPage.locator("video")).toHaveCount(1);
+    await guest.close();
   }
   await share(2);
   await login(page, "Client · Riya"); await page.goto(projectUrl);

@@ -1,61 +1,45 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("walkthrough opens once per login, can replay, and respects account-wide opt-out", async ({ page, browser }) => {
+async function startTour(page: Page) {
+  const menu = page.getByRole("button", { name: "Open navigation" });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole("button", { name: "Help & support" }).click();
+  await page.getByRole("button", { name: "Start quick tour" }).click();
+}
+
+test("tour is optional, stays on Home, and can be replayed", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: /^Founder/ }).click();
-  const tour = page.getByRole("dialog", { name: "Founder Home" });
-  await expect(tour).toBeVisible();
   await expect(page).toHaveURL(/\/home$/);
-  await tour.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("dialog", { name: "Needs Attention" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await startTour(page);
+  await expect(page.getByRole("dialog", { name: "Home" })).toBeVisible();
   await page.getByRole("button", { name: "Next" }).click();
-  await expect(page).toHaveURL(/\/work\?view=mine$/);
-  await expect(page.getByRole("dialog", { name: "My Tasks" })).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
-  await expect(page.getByRole("dialog", { name: "Needs Attention" })).toBeVisible();
-  await page.getByRole("button", { name: "Skip this time" }).click();
-  await expect(page.getByRole("dialog", { name: "Needs Attention" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("dialog", { name: "Your first action" })).toContainText("Open intake");
+  await expect(page).toHaveURL(/\/home$/);
+  await page.getByRole("button", { name: "Finish" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await startTour(page);
+  await expect(page.getByRole("dialog", { name: "Home" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("dialog", { name: "Founder Home" })).toHaveCount(0);
-  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
-  await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await page.getByRole("button", { name: /^Founder/ }).click();
-  await expect(page.getByRole("dialog", { name: "Founder Home" })).toBeVisible();
-  await page.getByRole("button", { name: "Don’t show this again" }).click();
-  await expect(page.getByRole("dialog", { name: "Founder Home" })).toHaveCount(0);
-  const other = await browser.newContext();
-  const secondPage = await other.newPage();
-  await secondPage.goto("/login");
-  await secondPage.getByRole("button", { name: /^Founder/ }).click();
-  await expect(secondPage).toHaveURL(/\/home$/);
-  await expect(secondPage.getByRole("dialog", { name: "Founder Home" })).toHaveCount(0);
-  if (await secondPage.getByRole("button", { name: "Open navigation" }).isVisible()) await secondPage.getByRole("button", { name: "Open navigation" }).click();
-  await secondPage.getByRole("button", { name: "Help & support" }).click();
-  await secondPage.getByRole("button", { name: "Start CRM walkthrough" }).click();
-  await expect(secondPage.getByRole("dialog", { name: "Founder Home" })).toBeVisible();
-  await other.close();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("walkthrough uses role-permitted steps and pauses when the next item is unavailable", async ({ page }) => {
-  await page.route("**/api/walkthrough", async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ optedOut: false, resumeStepKey: null, targets: { brief: null, project: null, task: null, assignment: null, internalReview: null, clientReview: null, feedback: null, approval: null, finalDelivery: null, completed: null } }) });
-  });
+test("Client tour has an available first action and does not use saved walkthrough progress", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: /^Client · Dev/ }).click();
-  await expect(page.getByRole("dialog", { name: "Client Home" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const before = await (await page.request.get("/api/walkthrough")).json();
+  await startTour(page);
   await page.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("dialog", { name: "Project" })).toContainText("resume here on your next login");
-  await expect(page.getByRole("dialog", { name: "Project" }).getByRole("button", { name: "Next" })).toHaveCount(0);
-  await expect.poll(async () => (await (await page.request.get("/api/walkthrough")).json()).resumeStepKey).toBe("project");
-  await page.unroute("**/api/walkthrough");
-  await page.getByRole("button", { name: "Close", exact: true }).click();
-  if (await page.getByRole("button", { name: "Open navigation" }).isVisible()) await page.getByRole("button", { name: "Open navigation" }).click();
-  await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await page.getByRole("button", { name: /^Client · Dev/ }).click();
-  await expect(page.getByRole("dialog", { name: "Project" })).toBeVisible();
-  const completed = await page.request.post("/api/walkthrough", { data: { command: "complete" } });
-  expect(completed.ok()).toBe(true);
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("dialog", { name: "Your first action" })).toContainText("shared files");
+  await page.getByRole("button", { name: "Finish" }).click();
+  const after = await (await page.request.get("/api/walkthrough")).json();
+  expect(after.resumeStepKey).toBe(before.resumeStepKey);
+  expect(after.optedOut).toBe(before.optedOut);
 });

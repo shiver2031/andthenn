@@ -24,7 +24,7 @@ export function ResetPasswordForm() {
     try {
       const { error } = await createSupabaseBrowserClient().auth.updateUser({ password });
       if (error) { setMessage("This recovery link is invalid or has expired. Request another reset link."); setBusy(false); }
-      else router.replace("/home?walkthrough=start");
+      else router.replace("/home");
     } catch {
       setMessage("Password recovery is not configured.");
       setBusy(false);

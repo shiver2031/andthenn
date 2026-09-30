@@ -16,7 +16,7 @@ export function ClientHome({ name, projects, reviews }: { name: string; projects
       <p className="relative flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-violet-300"><Sparkles size={14}/> Client workspace</p>
       <h1 className="display relative mt-3 text-3xl font-bold sm:text-4xl">Welcome back, {name.split(" ")[0]}</h1>
       <p className="relative mt-3 max-w-2xl text-sm leading-6 text-zinc-300">Track active projects and open shared files from one private, focused workspace.</p>
-      <Link href="/files" className="relative mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-zinc-950">Open shared files <ArrowUpRight size={16}/></Link>
+      <Link data-walkthrough="first-action" href="/files" className="relative mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-zinc-950">Open shared files <ArrowUpRight size={16}/></Link>
     </section>
     <section aria-label="Awaiting your review" className="surface mt-6 rounded-2xl p-5">
       <h2 className="display text-lg font-bold">Awaiting your review</h2>

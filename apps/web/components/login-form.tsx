@@ -26,7 +26,7 @@ export function LoginForm({ prototype = false, review = false }: { prototype?: b
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ persona }),
       });
       if (!response.ok) throw new Error("Unable to open the demo workspace. Please try again.");
-      router.replace("/home?walkthrough=start");
+      router.replace("/home");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to open the demo workspace.");
       setBusy(false);
@@ -36,7 +36,7 @@ export function LoginForm({ prototype = false, review = false }: { prototype?: b
   async function googleLogin() {
     setBusy(true); setMessage(null);
     try {
-      const { error } = await createSupabaseBrowserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback?next=/home?walkthrough=start` } });
+      const { error } = await createSupabaseBrowserClient().auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback?next=/home` } });
       if (error) setMessage(error.message);
     } catch { setMessage("Google sign-in is not configured."); } finally { setBusy(false); }
   }
@@ -45,7 +45,7 @@ export function LoginForm({ prototype = false, review = false }: { prototype?: b
     try {
       const { error } = await createSupabaseBrowserClient().auth.signInWithPassword({ email, password });
       if (error) { setMessage("Sign-in failed. Check your invitation and credentials."); setBusy(false); }
-      else router.replace("/home?walkthrough=start");
+      else router.replace("/home");
     } catch { setMessage("Temporary sign-in is not configured."); setBusy(false); }
   }
   async function resetPassword() {
