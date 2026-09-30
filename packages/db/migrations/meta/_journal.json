@@ -99,6 +99,13 @@
       "when": 1788562800000,
       "tag": "0013_crm_accountability_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790553600000,
+      "tag": "0014_membership_walkthrough",
+      "breakpoints": true
     }
   ]
 }

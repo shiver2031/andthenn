@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 async function signIn(page: import("@playwright/test").Page, persona: "founder" | "manager" | "employee" | "temporary" | "clientA" | "clientB" = "manager") {
+  await page.goto("about:blank");
   await page.context().clearCookies();
   await page.goto("/login");
   const names = { founder: /^Founder/, manager: /^Manager/, employee: /^Designer/, temporary: /^Temporary Designer/, clientA: /^Client · Riya/, clientB: /^Client · Dev/ };
@@ -35,8 +36,10 @@ test.describe("ACC-02 and ACC-04 route/control responsiveness", () => {
 
   test("shell controls have a defined keyboard outcome", async ({ page }) => {
     await signIn(page);
-    await page.getByRole("button", { name: /Search tasks, projects, clients/i }).press("Enter");
-    await expect(page.getByRole("dialog", { name: "Global search" })).toBeVisible();
+    await expect(async () => {
+      await page.getByRole("button", { name: /Search tasks, projects, clients/i }).press("Enter");
+      await expect(page.getByRole("dialog", { name: "Global search" })).toBeVisible();
+    }).toPass({ timeout: 15000 });
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 375, height: 812 });
     await page.getByRole("button", { name: "Open navigation" }).click();

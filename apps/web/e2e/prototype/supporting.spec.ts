@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 test.use({ actionTimeout: 15000 });
 test("relationship edits and stale expense corrections remain permission gated", async ({ page, context }, info) => {
-  await page.goto("/login"); await page.getByRole("button", { name: /^Manager/ }).click();
+  await page.goto("/login"); await page.getByRole("button", { name: /^Manager/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto("/clients/23000000-0000-4000-8000-000000000001");
   const brand = `Acceptance brand ${Date.now()}`;
   const add = page.locator("details").filter({ has: page.locator("summary", { hasText: /^Add brand$/ }) });
   await add.locator("summary").click(); await add.getByLabel("Name", { exact: true }).fill(brand);
   await add.getByRole("button", { name: "Save brand" }).click(); await expect(add.getByRole("status")).toContainText("saved");
   await page.reload(); await expect(page.locator("summary", { hasText: `Edit brand: ${brand}` })).toBeVisible();
-  await page.context().clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Founder/ }).click();
+  await page.goto("about:blank"); await page.context().clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Founder/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto("/accounts");
   const record = page.locator("details").filter({ has: page.locator("summary", { hasText: /^Record project expense$/ }) });
   await record.locator("summary").click(); await record.getByLabel("Amount", { exact: true }).fill("12.34");
@@ -27,6 +27,6 @@ test("relationship edits and stale expense corrections remain permission gated",
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath("expense-mobile.png"), fullPage: true });
-  await page.context().clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Designer/ }).click();
+  await page.goto("about:blank"); await page.context().clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto("/accounts"); await expect(page).toHaveURL(/\/home$/);
 });

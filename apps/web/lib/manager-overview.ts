@@ -3,9 +3,10 @@ import { getDiscussionAttention } from "./discussion-attention";
 import { projectHealth, isDueThisWeek, managerProjectGroup } from "./calendar";
 import { getTaskAttention } from "./task-attention";
 import type { ActorContext } from "./actor-context";
-import { and, clients, createDatabase, eq, intakeItems, memberships, profiles, projects, proposals, tasks, organizations, deliverables, workflowStages } from "@andthenn/db";
+import { and, clients, createDatabase, eq, inArray, intakeItems, memberships, profiles, projects, proposals, sql, tasks, organizations, deliverables, workflowStages } from "@andthenn/db";
+import { cache } from "react";
 
-const queueStatuses = new Set(["UNASSIGNED", "CLAIMED", "NEEDS_MANAGER_INPUT", "READY_FOR_DECISION"]);
+const queueStatuses = ["UNASSIGNED", "CLAIMED", "NEEDS_MANAGER_INPUT", "READY_FOR_DECISION"] as const;
 const dateFormatter = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 const formatDate = (value: Date) => dateFormatter.format(value);
 
@@ -43,16 +44,16 @@ export type ManagerHomeData = {
   attention: ManagerAttentionItem[];
 };
 
-export async function getManagerNavigationCounts(organizationId: string): Promise<ManagerNavigationCounts> {
+export const getManagerNavigationCounts = cache(async function getManagerNavigationCounts(organizationId: string): Promise<ManagerNavigationCounts> {
   const { db } = createDatabase();
   const [intakes, pendingSetups] = await Promise.all([
-    db.select({ status: intakeItems.status }).from(intakeItems).where(eq(intakeItems.organizationId, organizationId)),
-    db.select({ id: proposals.id }).from(proposals).where(and(eq(proposals.organizationId, organizationId), eq(proposals.status, "PENDING"))),
+    db.select({ total: sql<number>`count(*)::int` }).from(intakeItems).where(and(eq(intakeItems.organizationId, organizationId), inArray(intakeItems.status, [...queueStatuses]))),
+    db.select({ total: sql<number>`count(*)::int` }).from(proposals).where(and(eq(proposals.organizationId, organizationId), eq(proposals.status, "PENDING"))),
   ]);
-  const queue = intakes.filter((item) => queueStatuses.has(item.status)).length;
-  const setups = pendingSetups.length;
+  const queue = intakes[0]?.total ?? 0;
+  const setups = pendingSetups[0]?.total ?? 0;
   return { queue, setups, actionable: queue + setups };
-}
+});
 
 export async function getManagerHomeData(actor: ActorContext, now = new Date()): Promise<ManagerHomeData> {
   const { organizationId } = actor;
@@ -96,7 +97,7 @@ export async function getManagerHomeData(actor: ActorContext, now = new Date()):
   const [shared, work] = await Promise.all([getTaskAttention(actor, now), getWorkSummary(actor)]);
   const taskAttention: ManagerAttentionItem[] = shared.map((task) => ({ id: task.id, title: task.name, meta: `${task.client} · Assigned by ${work.rows.find((row) => row.id === task.id)?.assignedBy ?? "teammate"} · Due ${formatDate(task.dueAt)} · ${task.reasons.join(" · ")}`, tone: task.status === "BLOCKED" ? "rose" : "amber", href: `/tasks/${task.id}` }));
   const queuedAttention = queueRows
-    .filter((item) => queueStatuses.has(item.status))
+    .filter((item) => queueStatuses.includes(item.status as typeof queueStatuses[number]))
     .map((item) => ({ id: `intake:${item.id}`, title: `Review intake: ${item.title ?? "Untitled request"}`, meta: `Captured ${formatDate(item.createdAt)}`, tone: "amber" as const, href: `/intake?view=queue&item=${item.id}` }));
   const setupAttention = setupRows.map((setup) => ({ id: `setup:${setup.id}`, title: `Resume setup: ${setup.title}`, meta: setup.intakeItemId ? "Intake-backed project setup" : "New project setup", tone: "violet" as const, href: `/intake?view=setups&setup=${setup.id}` }));
   return {

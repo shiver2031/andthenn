@@ -1,10 +1,11 @@
 import { AppShell } from "../../components/app-shell";
 import { resolveActorContext } from "../../lib/actor-context";
-import { and, createDatabase, eq, isNull, notifications } from "@andthenn/db";
+import { and, createDatabase, eq, isNull, notifications, sql } from "@andthenn/db";
 import { isOperationalLeader } from "@andthenn/domain";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getManagerNavigationCounts } from "../../lib/manager-overview";
+import { Suspense } from "react";
 
 // Authentication and membership must be evaluated for every request; this also
 // keeps production configuration validation out of build-time prerendering.
@@ -23,14 +24,25 @@ export default async function ErpLayout({ children }: { children: React.ReactNod
   if (!allowed) {
     redirect("/home");
   }
+  const navBadge = isOperationalLeader(actor.role)
+    ? <Suspense fallback={null}><WorkAttentionBadge organizationId={actor.organizationId}/></Suspense>
+    : null;
+  const unreadBadge = <Suspense fallback={null}><UnreadBadge organizationId={actor.organizationId} membershipId={actor.membershipId}/></Suspense>;
+  return <AppShell actor={{ displayName: actor.displayName, role: actor.role, accountType: actor.accountType, financeAccess: actor.financeAccess }} navBadge={navBadge} unreadBadge={unreadBadge}>{children}</AppShell>;
+}
+
+async function WorkAttentionBadge({ organizationId }: { organizationId: string }) {
+  const { actionable } = await getManagerNavigationCounts(organizationId);
+  return actionable > 0 ? <span className="grid min-w-5 place-items-center rounded-full bg-violet-500 px-1.5 py-0.5 text-[10px] text-white">{actionable}</span> : null;
+}
+
+async function UnreadBadge({ organizationId, membershipId }: { organizationId: string; membershipId: string }) {
   const { db } = createDatabase();
-  const [navCounts, unreadRows] = await Promise.all([
-    isOperationalLeader(actor.role) ? getManagerNavigationCounts(actor.organizationId) : Promise.resolve(undefined),
-    db.select({ id: notifications.id }).from(notifications).where(and(
-      eq(notifications.organizationId, actor.organizationId),
-      eq(notifications.recipientMembershipId, actor.membershipId),
-      isNull(notifications.readAt),
-    )),
-  ]);
-  return <AppShell actor={{ displayName: actor.displayName, role: actor.role, accountType: actor.accountType, financeAccess: actor.financeAccess }} navCounts={navCounts} unreadCount={unreadRows.length}>{children}</AppShell>;
+  const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(notifications).where(and(
+    eq(notifications.organizationId, organizationId),
+    eq(notifications.recipientMembershipId, membershipId),
+    isNull(notifications.readAt),
+  ));
+  const count = row?.total ?? 0;
+  return count > 0 ? <span aria-label={`${count} unread`} className="absolute right-1.5 top-1.5 grid min-w-4 place-items-center rounded-full bg-fuchsia-700 px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-[#f6f5f1]">{count > 9 ? "9+" : count}</span> : null;
 }

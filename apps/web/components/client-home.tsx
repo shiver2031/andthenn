@@ -11,7 +11,7 @@ export interface ClientHomeProject {
 
 export function ClientHome({ name, projects, reviews }: { name: string; projects: ClientHomeProject[]; reviews: { id: string; projectId: string; project: string; filename: string; version: number }[] }) {
   return <>
-    <section className="relative overflow-hidden rounded-3xl bg-zinc-950 px-6 py-8 text-white sm:px-8">
+    <section data-walkthrough="home" className="relative overflow-hidden rounded-3xl bg-zinc-950 px-6 py-8 text-white sm:px-8">
       <div className="absolute -right-16 -top-20 size-64 rounded-full bg-violet-500/20 blur-3xl" />
       <p className="relative flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-violet-300"><Sparkles size={14}/> Client workspace</p>
       <h1 className="display relative mt-3 text-3xl font-bold sm:text-4xl">Welcome back, {name.split(" ")[0]}</h1>

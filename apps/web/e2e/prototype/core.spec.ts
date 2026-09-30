@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 async function signIn(page: import("@playwright/test").Page, persona: "manager" | "employee" = "manager") {
+  await page.goto("about:blank");
   await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("button", { name: persona === "manager" ? "Manager" : "Employee", exact: false }).click();

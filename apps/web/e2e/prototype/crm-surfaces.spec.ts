@@ -16,13 +16,13 @@ test("CRM role Homes, zero-project client search, project discussion and Client 
   await discussion.getByRole("button", { name: "Post comment", exact: true }).click();
   await expect(discussion.getByText(body, { exact: true })).toBeVisible();
   await page.reload(); await expect(discussion.getByText(body, { exact: true })).toBeVisible();
-  await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("about:blank"); await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
   for (const name of ["Due Today", "Due Tomorrow", "Upcoming", "Waiting for Feedback"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   await page.goto("/notifications");
   const notification = page.locator("article").filter({ hasText: body });
   await notification.getByRole("link", { name: "Open item" }).click();
   await expect(page).toHaveURL(/\/projects\/.*#comment-/);
-  await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Client · Riya/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("about:blank"); await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Client · Riya/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto("/projects"); await page.getByRole("link", { name: /Aster/ }).click();
   await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+$/);
   expect(await page.locator("#discussion").count()).toBe(0);
@@ -41,8 +41,22 @@ test("cross-organization pages, search, exports, file bytes and forged task comm
   expect(await (await page.request.get("/api/reports/operational-export")).text()).not.toContain("Foreign confidential");
   await page.goto("/tasks/2c000000-0000-4000-8000-000000000001");
   const statusForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Update status", exact: true }) });
-  await statusForm.locator('input[name="taskId"]').evaluate((input: HTMLInputElement) => { input.value = "4c000000-0000-4000-8000-000000000001"; });
+  const originalStatus = await statusForm.getByLabel("Execution status").inputValue();
+  await statusForm.getByLabel("Execution status").selectOption("IN_PROGRESS");
   await statusForm.getByLabel(/Reason/).fill("Cross-organization attempt must fail");
+  // Forge the serialized request, not a controlled input that hydration can restore.
+  let forged = false;
+  await page.route("**/tasks/2c000000-0000-4000-8000-000000000001", async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST") return route.continue();
+    const body = request.postData() ?? "";
+    expect(body).toContain("2c000000-0000-4000-8000-000000000001");
+    forged = true;
+    await route.continue({ postData: body.replaceAll("2c000000-0000-4000-8000-000000000001", "4c000000-0000-4000-8000-000000000001") });
+  });
   await statusForm.getByRole("button", { name: "Update status", exact: true }).click();
   await expect(statusForm.getByRole("alert")).toContainText(/not found|unavailable/i);
+  expect(forged).toBe(true);
+  await page.reload();
+  await expect(statusForm.getByLabel("Execution status")).toHaveValue(originalStatus);
 });

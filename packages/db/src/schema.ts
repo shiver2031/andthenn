@@ -285,6 +285,19 @@ export const memberships = pgTable(
   ],
 );
 
+export const membershipWalkthroughs = pgTable(
+  "membership_walkthroughs",
+  {
+    membershipId: uuid("membership_id").primaryKey().references(() => memberships.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }),
+    resumeStepKey: varchar("resume_step_key", { length: 80 }),
+    resumeRole: roleEnum("resume_role"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("membership_walkthrough_org_idx").on(table.organizationId)],
+);
+
 export const invites = pgTable("invites", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id")

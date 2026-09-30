@@ -82,7 +82,7 @@ async function start() {
   console.log(`AndThenn prototype is ready at ${env.APP_URL}`);
   const web = spawn("pnpm", ["--filter", "@andthenn/web", "dev"], { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
   const workerPort = await availablePort();
-  const worker = spawn(process.execPath, [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "apps/worker/src/index.ts")], { cwd: root, env: { ...env, PORT: String(workerPort), PROTOTYPE_FIXTURE_INSPECTION: "1" }, stdio: "inherit" });
+  const worker = spawn(process.execPath, ["--import", "tsx", join(root, "apps/worker/src/index.ts")], { cwd: root, env: { ...env, PORT: String(workerPort), PROTOTYPE_FIXTURE_INSPECTION: "1" }, stdio: "inherit" });
   const stop = async () => { web.kill("SIGTERM"); worker.kill("SIGTERM"); await pg.stop().catch(() => undefined); };
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
   await new Promise<void>((resolveWeb) => web.once("exit", () => resolveWeb()));
@@ -112,6 +112,15 @@ async function run(command: string, args: string[], environment: NodeJS.ProcessE
   if (code !== 0) throw new Error(`${command} ${args.join(" ")} failed (${code})`);
 }
 
+async function stopAcceptanceProcess(child: ReturnType<typeof spawn> | null) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolveExit) => {
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 5000);
+    child.once("exit", () => { clearTimeout(timeout); resolveExit(); });
+    child.kill("SIGTERM");
+  });
+}
+
 async function runAcceptance(browserProject?: string) {
   const temporaryDataDir = await mkdtemp(join(tmpdir(), "andthenn-prototype-"));
   const webPort = await availablePort();
@@ -130,17 +139,17 @@ async function runAcceptance(browserProject?: string) {
     await run("pnpm", ["build"], environment);
     // The workspace does not emit a standalone server artifact, despite the
     // Next configuration warning, so `next start` is the verified runtime.
-    web = spawn("pnpm", ["--filter", "@andthenn/web", "start"], { cwd: root, env: environment, stdio: "inherit", shell: process.platform === "win32" });
+    // Spawn the runtimes directly so teardown cannot leave pnpm/tsx children alive.
+    web = spawn(process.execPath, [join(root, "apps/web/node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1"], { cwd: join(root, "apps/web"), env: environment, stdio: "inherit" });
     await waitFor(`${appUrl}/api/health/ready`, web);
     const workerPort = await availablePort();
-    worker = spawn(process.execPath, [join(root, "node_modules/tsx/dist/cli.mjs"), join(root, "apps/worker/src/index.ts")], { cwd: root, env: { ...environment, PORT: String(workerPort), PROTOTYPE_FIXTURE_INSPECTION: "1" }, stdio: "inherit" });
+    worker = spawn(process.execPath, ["--import", "tsx", join(root, "apps/worker/src/index.ts")], { cwd: root, env: { ...environment, PORT: String(workerPort), PROTOTYPE_FIXTURE_INSPECTION: "1" }, stdio: "inherit" });
     await waitFor(`http://127.0.0.1:${workerPort}/health/ready`, worker);
     const result = spawn("pnpm", ["exec", "playwright", "test", "--config=playwright.prototype.config.ts", ...(browserProject ? ["--project", browserProject] : []), ...(process.env.PROTOTYPE_TEST_GREP ? ["--grep", process.env.PROTOTYPE_TEST_GREP] : [])], { cwd: root, env: { ...environment, PROTOTYPE_APP_URL: appUrl, ...(browserProject ? { PROTOTYPE_RESULT_DIR: join(root, "test-results", browserProject) } : {}) }, stdio: "inherit", shell: process.platform === "win32" });
     const code = await new Promise<number | null>((resolveExit) => result.once("exit", resolveExit));
     if (code !== 0) throw new Error(`Prototype acceptance failed (${code})`);
   } finally {
-    web?.kill("SIGTERM");
-    worker?.kill("SIGTERM");
+    await Promise.all([stopAcceptanceProcess(web), stopAcceptanceProcess(worker)]);
     await pg.stop().catch(() => undefined);
     await rm(temporaryDataDir, { recursive: true, force: true });
   }

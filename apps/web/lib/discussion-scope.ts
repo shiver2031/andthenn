@@ -1,6 +1,6 @@
 import { sql } from "@andthenn/db";
 /** Same membership scope powers recipient choices and validation at write time. */
-export function discussionMemberScope(organizationId: string, projectId: string, taskId?: string) {
+export function discussionMemberScope(organizationId: string, projectId: string | ReturnType<typeof sql>, taskId?: string) {
   return sql`memberships.organization_id = ${organizationId}::uuid and memberships.status = 'ACTIVE' and memberships.role <> 'CLIENT'
     and (memberships.starts_at is null or memberships.starts_at <= now()) and (memberships.expires_at is null or memberships.expires_at > now())
     and (memberships.role in ('FOUNDER','MANAGER') or exists (select 1 from project_memberships pm where pm.project_id = ${projectId}::uuid and pm.membership_id = memberships.id and pm.removed_at is null)

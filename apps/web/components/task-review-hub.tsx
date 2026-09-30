@@ -1,4 +1,5 @@
 "use client";
+import { browserFormData } from "../lib/browser-form-data";
 
 import { Badge, Button } from "@andthenn/ui";
 import {
@@ -100,7 +101,7 @@ export function TaskReviewHub({
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
+    const data = browserFormData(form);
     const file = data.get("file");
     if (!(file instanceof File) || !file.size) return;
     setBusy(true);
@@ -207,7 +208,7 @@ export function TaskReviewHub({
     setMessage("");
     startTransition(async () => {
       try {
-        const result = await createReviewShare(new FormData(form));
+        const result = await createReviewShare(browserFormData(form));
         setShareUrl(result.url);
         setMessage("Version-pinned review link created.");
         router.refresh();
@@ -225,7 +226,7 @@ export function TaskReviewHub({
     setMessage("");
     startTransition(async () => {
       try {
-        await selectTaskReviewVersion(new FormData(form));
+        await selectTaskReviewVersion(browserFormData(form));
         setMessage("Internal review version selected.");
         router.refresh();
       } catch (error) {
@@ -239,7 +240,7 @@ export function TaskReviewHub({
   }
 
   return (
-    <section className="surface mt-5 rounded-2xl p-5">
+    <section data-walkthrough="internal-review" className="surface mt-5 rounded-2xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest text-violet-500">
@@ -525,7 +526,7 @@ export function TaskReviewHub({
               )}
             </div>
           </div>
-          <div className="rounded-2xl border border-zinc-100 p-4">
+          <div data-walkthrough="feedback" className="rounded-2xl border border-zinc-100 p-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold">Outstanding feedback</h3>
               <span className="flex gap-1">
