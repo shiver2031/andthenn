@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 async function login(page: Page, persona: string) {
-  await page.context().clearCookies(); await page.goto("/login");
+  await page.goto("/login"); await page.context().clearCookies();
   await page.getByRole("button", { name: new RegExp(`^${persona}`) }).click();
   await expect(page).toHaveURL(/\/home$/);
 }
@@ -137,6 +137,7 @@ test("CRM header 12: original assigner changes deadline and reassigns with retai
   await page.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page).toHaveURL(/\/projects\?project=[^&]+$/);
+  await expect(page.locator("tr").filter({ has: page.getByRole("button", { name: title, exact: true }) }).getByText("Rohan Bose · owner")).toBeVisible();
   await page.goto(taskUrl); await expect(page.getByText("Assigned by Arjun Menon", { exact: false })).toBeVisible();
   await page.goto(`/projects?project=${projectHref!.split("/").pop()}&task=${taskId}`);
   await expect(page.getByLabel("Due date")).toHaveValue(changedDue);
