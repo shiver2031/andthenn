@@ -15,7 +15,7 @@ test("CRM-R1 detail edits preserve the assigner and pending completion authority
   await expect(page).toHaveURL(/\/tasks\//);
   const taskUrl = page.url(), taskId = taskUrl.split("/").pop()!;
   const projectUrl = await page.locator('a[href^="/projects/"]').first().getAttribute("href");
-  await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("/login"); await context.clearCookies(); await page.getByRole("button", { name: /^Designer/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto(taskUrl); await page.getByRole("button", { name: "Request completion", exact: true }).click();
   await expect(page.getByRole("button", { name: "Update and withdraw request", exact: true })).toBeVisible();
   await page.goto(`/projects?project=${projectUrl!.split("/").pop()}&task=${taskId}`);
@@ -28,7 +28,7 @@ test("CRM-R1 detail edits preserve the assigner and pending completion authority
   await expect(page.getByText(/Assigned by Rohan Bose/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Request completion", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Confirm completion", exact: true })).toHaveCount(0);
-  await context.clearCookies(); await page.goto("/login"); await page.getByRole("button", { name: /^Manager/ }).click(); await expect(page).toHaveURL(/\/home$/);
+  await page.goto("/login"); await context.clearCookies(); await page.getByRole("button", { name: /^Manager/ }).click(); await expect(page).toHaveURL(/\/home$/);
   await page.goto(taskUrl); await page.getByRole("button", { name: "Confirm completion", exact: true }).click();
   await expect(page.getByRole("button", { name: "Confirm completion", exact: true })).toHaveCount(0);
 });

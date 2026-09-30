@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 test.use({ actionTimeout: 15000 });
 
 async function login(page: Page, persona: string) {
-  await page.context().clearCookies(); await page.goto("/login");
+  await page.goto("/login"); await page.context().clearCookies();
   await page.getByRole("button", { name: new RegExp(`^${persona}`) }).click();
   await expect(page).toHaveURL(/\/home$/);
 }

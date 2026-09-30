@@ -10,8 +10,8 @@ test("login and primary navigation keep the browser document for every active pe
     { name: /^Client · Dev/, destination: "My Projects" },
   ];
   for (const persona of personas) {
-    await context.clearCookies();
     await page.goto("/login");
+    await context.clearCookies();
     await page.evaluate(() => Object.assign(window, { andthennDocumentMarker: true }));
     await page.getByRole("button", { name: persona.name }).click();
     await expect(page).toHaveURL(/\/home$/);
